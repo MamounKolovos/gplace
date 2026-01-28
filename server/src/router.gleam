@@ -51,7 +51,7 @@ fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
       // )
       use returned <- result.try(
         sql.insert_user(
-          ctx.conn,
+          ctx.db,
           signup.email,
           signup.name,
           // TEMPORARY until jargon adds windows support

@@ -2,7 +2,7 @@ import pog
 import wisp
 
 pub type Context {
-  Context(conn: pog.Connection)
+  Context(db: pog.Connection)
 }
 
 pub fn middleware(
