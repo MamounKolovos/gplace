@@ -3,8 +3,10 @@ import gleam/dynamic/decode
 import gleam/float
 import gleam/http
 import gleam/http/request
+import gleam/http/response
 import gleam/json.{type Json}
 import gleam/list
+import gleam/result
 import gleam/time/timestamp.{type Timestamp}
 import gleam/uri
 import lustre
@@ -14,8 +16,7 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
 import rsvp
-import signup.{type Signup, Signup}
-import user.{type User, User}
+import shared
 
 pub fn main() -> Nil {
   let app = lustre.application(init, update, view)
@@ -23,16 +24,25 @@ pub fn main() -> Nil {
   Nil
 }
 
+//TODO: add error_to_string
+type Error {
+  /// The api call failed with some domain-specific error
+  ApiFailure(shared.ApiError)
+  InvalidApiResponse(String)
+  /// There was a network problem or something else went wrong with the request itself
+  TransportFailure(rsvp.Error)
+}
+
 type Model {
-  SignupPage(form: Form(Signup))
-  MainPage(data: Signup)
+  SignupPage(form: Form(shared.Signup))
+  MainPage(data: shared.User)
 }
 
 fn init(_args) -> #(Model, Effect(Msg)) {
   #(SignupPage(signup_form()), effect.none())
 }
 
-fn signup_form() -> Form(Signup) {
+fn signup_form() -> Form(shared.Signup) {
   form.new({
     use email <- form.field("email", form.parse_email)
     use name <- form.field("name", form.parse_string |> form.check_not_empty)
@@ -48,31 +58,33 @@ fn signup_form() -> Form(Signup) {
       form.parse_string |> form.check_confirms(password),
     )
 
-    form.success(Signup(email:, name:, password:))
+    form.success(shared.Signup(email:, name:, password:))
   })
 }
 
 type Msg {
-  UserClickedSignupButton(Result(Signup, Form(Signup)))
-  ApiReturnedUser(Result(User, rsvp.Error))
+  UserClickedSignupButton(Result(shared.Signup, Form(shared.Signup)))
+  ApiReturnedUser(Result(shared.User, Error))
 }
 
 fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   case msg {
     UserClickedSignupButton(result) ->
       case result {
-        Ok(signup) -> #(MainPage(signup), post_signup(signup))
+        //add signupsubmitting model variant to disable buttons
+        Ok(signup) -> #(model, post_signup(signup))
         Error(form) -> #(SignupPage(form), effect.none())
       }
     ApiReturnedUser(result) ->
       case result {
-        Ok(user) -> todo
-        Error(error) -> todo
+        Ok(user) -> #(MainPage(user), effect.none())
+        // add error to model to render
+        Error(_) -> #(model, effect.none())
       }
   }
 }
 
-fn post_signup(signup: Signup) -> Effect(Msg) {
+fn post_signup(signup: shared.Signup) -> Effect(Msg) {
   let assert Ok(uri) = rsvp.parse_relative_uri("/api/signup")
   let assert Ok(request) = request.from_uri(uri)
 
@@ -82,7 +94,8 @@ fn post_signup(signup: Signup) -> Effect(Msg) {
       #("name", signup.name),
       #("password", signup.password),
     ])
-  let handler = rsvp.expect_json(user_decoder(), ApiReturnedUser)
+
+  let handler = expect_json(user_decoder(), ApiReturnedUser)
 
   request
   |> request.set_method(http.Post)
@@ -91,14 +104,33 @@ fn post_signup(signup: Signup) -> Effect(Msg) {
   |> rsvp.send(handler)
 }
 
-pub fn user_decoder() -> decode.Decoder(User) {
+fn expect_json(
+  decoder: decode.Decoder(a),
+  handler: fn(Result(a, Error)) -> msg,
+) -> rsvp.Handler(msg) {
+  use res <- rsvp.expect_json(decoder)
+
+  let response = case res {
+    Ok(data) -> Ok(data)
+    Error(rsvp.HttpError(response)) ->
+      case json.parse(response.body, api_error_decoder()) {
+        Ok(api_error) -> Error(ApiFailure(api_error))
+        Error(_decode_error) -> Error(InvalidApiResponse(response.body))
+      }
+    Error(error) -> Error(TransportFailure(error))
+  }
+
+  handler(response)
+}
+
+pub fn user_decoder() -> decode.Decoder(shared.User) {
   use id <- decode.field("id", decode.int)
   use email <- decode.field("email", decode.string)
   use name <- decode.field("name", decode.string)
   use password_hash <- decode.field("password_hash", decode.string)
   use created_at <- decode.field("created_at", timestamp_decoder())
   use updated_at <- decode.field("updated_at", timestamp_decoder())
-  decode.success(User(
+  decode.success(shared.User(
     id:,
     email:,
     name:,
@@ -113,14 +145,32 @@ fn timestamp_decoder() -> decode.Decoder(Timestamp) {
   value |> float.round |> timestamp.from_unix_seconds |> decode.success
 }
 
-fn view(model: Model) -> Element(Msg) {
-  case model {
-    SignupPage(form) -> signup_page_view(form)
-    MainPage(_) -> todo
+fn api_error_decoder() -> decode.Decoder(shared.ApiError) {
+  let decoder = {
+    use code <- decode.field("code", api_error_code_decoder())
+    use message <- decode.field("message", decode.string)
+    decode.success(shared.ApiError(code:, message:))
+  }
+  decode.at(["error"], decoder)
+}
+
+fn api_error_code_decoder() -> decode.Decoder(shared.ApiErrorCode) {
+  use variant <- decode.then(decode.string)
+  case variant {
+    "INVALID_FORM" -> decode.success(shared.InvalidFormCode)
+    "INTERNAL_ERROR" -> decode.success(shared.InternalError)
+    _ -> decode.failure(shared.InternalError, "ApiErrorCode")
   }
 }
 
-fn signup_page_view(form: Form(Signup)) -> Element(Msg) {
+fn view(model: Model) -> Element(Msg) {
+  case model {
+    SignupPage(form) -> signup_page_view(form)
+    MainPage(_) -> html.text("successful sign in!")
+  }
+}
+
+fn signup_page_view(form: Form(shared.Signup)) -> Element(Msg) {
   html.form(
     [
       // prevents default submission and collects field values

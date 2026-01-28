@@ -6,9 +6,8 @@ import gleam/list
 import gleam/result
 import gleam/time/timestamp.{type Timestamp}
 import pog
-import signup.{type Signup, Signup}
+import shared
 import sql
-import user.{type User, User}
 import web.{type Context}
 import wisp.{type Request, type Response}
 
@@ -26,7 +25,7 @@ type SignupError {
   // HashFailure(argus.HashError)
   InvalidQuery(pog.QueryError)
   UnexpectedQueryResult
-  InvalidForm(Form(Signup))
+  InvalidForm(Form(shared.Signup))
 }
 
 fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
@@ -74,50 +73,57 @@ fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
   case result {
     Ok(user) ->
       user |> user_to_json |> json.to_string |> wisp.json_response(201)
-    Error(InvalidQuery(error)) ->
-      ApiError(code: "INVALID_QUERY", message: "Invalid Request")
-      |> api_error_to_json
-      |> json.to_string
-      |> wisp.json_response(400)
-    Error(UnexpectedQueryResult) ->
-      ApiError(
-        code: "UNEXPECTED_QUERY_RESULT",
-        message: "Internal Server Error",
-      )
-      |> api_error_to_json
-      |> json.to_string
-      |> wisp.json_response(500)
-    Error(InvalidForm(form)) ->
-      ApiError(code: "INVALID_FORM", message: "Some fields are invalid")
-      |> api_error_to_json
-      |> json.to_string
-      |> wisp.json_response(400)
+    Error(InvalidQuery(error)) -> internal_error()
+    Error(UnexpectedQueryResult) -> internal_error()
+    Error(InvalidForm(form)) -> invalid_form("Some fields are invalid")
   }
 }
 
-type ApiError {
-  ApiError(code: String, message: String)
+fn api_error_code_to_json(code: shared.ApiErrorCode) -> Json {
+  case code {
+    shared.InvalidFormCode -> "INVALID_FORM"
+    shared.InternalError -> "INTERNAL_ERROR"
+  }
+  |> json.string
 }
 
-// type ApiErrorCode {
-//   InvalidFormCode
-//   InternalError
-// }
+fn api_error_code_status(code: shared.ApiErrorCode) -> Int {
+  case code {
+    shared.InvalidFormCode -> 400
+    shared.InternalError -> 500
+  }
+}
 
-fn api_error_to_json(api_error: ApiError) -> Json {
+fn invalid_form(message: String) -> Response {
+  shared.ApiError(code: shared.InvalidFormCode, message: message)
+  |> api_error_response
+}
+
+fn internal_error() -> Response {
+  shared.ApiError(code: shared.InternalError, message: "Internal server error")
+  |> api_error_response
+}
+
+fn api_error_response(api_error: shared.ApiError) -> Response {
+  let status = api_error_code_status(api_error.code)
+  api_error |> api_error_to_json |> json.to_string |> wisp.json_response(status)
+}
+
+fn api_error_to_json(api_error: shared.ApiError) -> Json {
   json.object([
     #(
       "error",
       json.object([
-        #("code", json.string(api_error.code)),
+        #("code", api_error_code_to_json(api_error.code)),
         #("message", json.string(api_error.message)),
       ]),
     ),
   ])
 }
 
-fn user_to_json(user: User) -> Json {
-  let User(id:, email:, name:, password_hash:, created_at:, updated_at:) = user
+fn user_to_json(user: shared.User) -> Json {
+  let shared.User(id:, email:, name:, password_hash:, created_at:, updated_at:) =
+    user
   json.object([
     #("id", json.int(id)),
     #("email", json.string(email)),
@@ -132,7 +138,7 @@ fn timestamp_to_json(timestamp: Timestamp) -> Json {
   timestamp |> timestamp.to_unix_seconds |> json.float
 }
 
-fn signup_form() -> Form(Signup) {
+fn signup_form() -> Form(shared.Signup) {
   form.new({
     use email <- form.field("email", form.parse_email)
     use name <- form.field("name", form.parse_string |> form.check_not_empty)
@@ -143,12 +149,12 @@ fn signup_form() -> Form(Signup) {
         |> form.check_string_length_more_than(8),
     )
 
-    form.success(Signup(email:, name:, password:))
+    form.success(shared.Signup(email:, name:, password:))
   })
 }
 
-fn insert_user_row_to_user(row: sql.InsertUserRow) -> User {
-  User(
+fn insert_user_row_to_user(row: sql.InsertUserRow) -> shared.User {
+  shared.User(
     id: row.id,
     email: row.email,
     name: row.name,
