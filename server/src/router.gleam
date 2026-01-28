@@ -122,13 +122,11 @@ fn api_error_to_json(api_error: shared.ApiError) -> Json {
 }
 
 fn user_to_json(user: shared.User) -> Json {
-  let shared.User(id:, email:, name:, password_hash:, created_at:, updated_at:) =
-    user
+  let shared.User(id:, email:, name:, created_at:, updated_at:) = user
   json.object([
     #("id", json.int(id)),
     #("email", json.string(email)),
     #("name", json.string(name)),
-    #("password_hash", json.string(password_hash)),
     #("created_at", timestamp_to_json(created_at)),
     #("updated_at", timestamp_to_json(updated_at)),
   ])
@@ -158,7 +156,6 @@ fn insert_user_row_to_user(row: sql.InsertUserRow) -> shared.User {
     id: row.id,
     email: row.email,
     name: row.name,
-    password_hash: row.password_hash,
     created_at: row.created_at,
     updated_at: row.updated_at,
   )

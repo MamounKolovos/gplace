@@ -127,17 +127,9 @@ pub fn user_decoder() -> decode.Decoder(shared.User) {
   use id <- decode.field("id", decode.int)
   use email <- decode.field("email", decode.string)
   use name <- decode.field("name", decode.string)
-  use password_hash <- decode.field("password_hash", decode.string)
   use created_at <- decode.field("created_at", timestamp_decoder())
   use updated_at <- decode.field("updated_at", timestamp_decoder())
-  decode.success(shared.User(
-    id:,
-    email:,
-    name:,
-    password_hash:,
-    created_at:,
-    updated_at:,
-  ))
+  decode.success(shared.User(id:, email:, name:, created_at:, updated_at:))
 }
 
 fn timestamp_decoder() -> decode.Decoder(Timestamp) {

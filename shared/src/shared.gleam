@@ -18,7 +18,6 @@ pub type User {
     id: Int,
     email: String,
     name: String,
-    password_hash: String,
     created_at: Timestamp,
     updated_at: Timestamp,
   )
