@@ -44,7 +44,7 @@ fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
       //   sql.insert_user(
       //     ctx.conn,
       //     signup.email,
-      //     signup.name,
+      //     signup.username,
       //     hashes.encoded_hash,
       //   )
       //   |> result.map_error(InvalidQuery),
@@ -53,7 +53,7 @@ fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
         sql.insert_user(
           ctx.db,
           signup.email,
-          signup.name,
+          signup.username,
           // TEMPORARY until jargon adds windows support
           signup.password,
         )
@@ -122,11 +122,11 @@ fn api_error_to_json(api_error: shared.ApiError) -> Json {
 }
 
 fn user_to_json(user: shared.User) -> Json {
-  let shared.User(id:, email:, name:, created_at:, updated_at:) = user
+  let shared.User(id:, email:, username:, created_at:, updated_at:) = user
   json.object([
     #("id", json.int(id)),
     #("email", json.string(email)),
-    #("name", json.string(name)),
+    #("username", json.string(username)),
     #("created_at", timestamp_to_json(created_at)),
     #("updated_at", timestamp_to_json(updated_at)),
   ])
@@ -139,7 +139,10 @@ fn timestamp_to_json(timestamp: Timestamp) -> Json {
 fn signup_form() -> Form(shared.Signup) {
   form.new({
     use email <- form.field("email", form.parse_email)
-    use name <- form.field("name", form.parse_string |> form.check_not_empty)
+    use username <- form.field(
+      "username",
+      form.parse_string |> form.check_not_empty,
+    )
     use password <- form.field(
       "password",
       form.parse_string
@@ -147,7 +150,7 @@ fn signup_form() -> Form(shared.Signup) {
         |> form.check_string_length_more_than(8),
     )
 
-    form.success(shared.Signup(email:, name:, password:))
+    form.success(shared.Signup(email:, username:, password:))
   })
 }
 
@@ -155,7 +158,7 @@ fn insert_user_row_to_user(row: sql.InsertUserRow) -> shared.User {
   shared.User(
     id: row.id,
     email: row.email,
-    name: row.name,
+    username: row.username,
     created_at: row.created_at,
     updated_at: row.updated_at,
   )

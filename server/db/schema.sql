@@ -64,7 +64,7 @@ CREATE TABLE public.users (
     id integer NOT NULL,
     email public.citext NOT NULL,
     password_hash text NOT NULL,
-    name text NOT NULL,
+    username text NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
@@ -127,4 +127,5 @@ CREATE TRIGGER users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECU
 --
 
 INSERT INTO public.schema_migrations (version) VALUES
-    ('20260130021931');
+    ('20260130021931'),
+    ('20260130040157');

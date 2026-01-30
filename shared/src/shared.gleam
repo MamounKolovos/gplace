@@ -10,14 +10,14 @@ pub type ApiError {
 }
 
 pub type Signup {
-  Signup(email: String, name: String, password: String)
+  Signup(email: String, username: String, password: String)
 }
 
 pub type User {
   User(
     id: Int,
     email: String,
-    name: String,
+    username: String,
     created_at: Timestamp,
     updated_at: Timestamp,
   )

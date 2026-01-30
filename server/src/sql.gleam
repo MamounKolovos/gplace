@@ -18,7 +18,7 @@ pub type InsertUserRow {
   InsertUserRow(
     id: Int,
     email: String,
-    name: String,
+    username: String,
     created_at: Timestamp,
     updated_at: Timestamp,
   )
@@ -39,15 +39,21 @@ pub fn insert_user(
   let decoder = {
     use id <- decode.field(0, decode.int)
     use email <- decode.field(1, decode.string)
-    use name <- decode.field(2, decode.string)
+    use username <- decode.field(2, decode.string)
     use created_at <- decode.field(3, pog.timestamp_decoder())
     use updated_at <- decode.field(4, pog.timestamp_decoder())
-    decode.success(InsertUserRow(id:, email:, name:, created_at:, updated_at:))
+    decode.success(InsertUserRow(
+      id:,
+      email:,
+      username:,
+      created_at:,
+      updated_at:,
+    ))
   }
 
-  "insert into users(email, name, password_hash)
+  "insert into users(email, username, password_hash)
 values ($1, $2, $3)
-returning id, email, name, created_at, updated_at"
+returning id, email, username, created_at, updated_at"
   |> pog.query
   |> pog.parameter(pog.text(arg_1))
   |> pog.parameter(pog.text(arg_2))

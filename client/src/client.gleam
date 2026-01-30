@@ -42,8 +42,8 @@ type AuthMode {
 
 /// Parsed form input
 type AuthInput {
-  SignupInput(email: String, name: String, password: String)
-  LoginInput(name: String, password: String)
+  SignupInput(email: String, username: String, password: String)
+  LoginInput(username: String, password: String)
 }
 
 type Model {
@@ -57,7 +57,10 @@ fn init(_args) -> #(Model, Effect(Msg)) {
 
 fn login_form() -> Form(AuthInput) {
   form.new({
-    use name <- form.field("name", form.parse_string |> form.check_not_empty)
+    use username <- form.field(
+      "username",
+      form.parse_string |> form.check_not_empty,
+    )
     use password <- form.field(
       "password",
       form.parse_string
@@ -65,14 +68,17 @@ fn login_form() -> Form(AuthInput) {
         |> form.check_string_length_more_than(8),
     )
 
-    form.success(LoginInput(name:, password:))
+    form.success(LoginInput(username:, password:))
   })
 }
 
 fn signup_form() -> Form(AuthInput) {
   form.new({
     use email <- form.field("email", form.parse_email)
-    use name <- form.field("name", form.parse_string |> form.check_not_empty)
+    use username <- form.field(
+      "username",
+      form.parse_string |> form.check_not_empty,
+    )
     use password <- form.field(
       "password",
       form.parse_string
@@ -85,7 +91,7 @@ fn signup_form() -> Form(AuthInput) {
       form.parse_string |> form.check_confirms(password),
     )
 
-    form.success(SignupInput(email:, name:, password:))
+    form.success(SignupInput(email:, username:, password:))
   })
 }
 
@@ -123,14 +129,14 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
 
 fn submit_auth(input: AuthInput) -> Effect(Msg) {
   let #(path, body) = case input {
-    SignupInput(email, name, password) -> #("/api/signup", [
+    SignupInput(email:, username:, password:) -> #("/api/signup", [
       #("email", email),
-      #("name", name),
+      #("username", username),
       #("password", password),
     ])
 
-    LoginInput(name, password) -> #("/api/login", [
-      #("name", name),
+    LoginInput(username:, password:) -> #("/api/login", [
+      #("username", username),
       #("password", password),
     ])
   }
@@ -168,10 +174,10 @@ fn expect_json(
 pub fn user_decoder() -> decode.Decoder(shared.User) {
   use id <- decode.field("id", decode.int)
   use email <- decode.field("email", decode.string)
-  use name <- decode.field("name", decode.string)
+  use username <- decode.field("username", decode.string)
   use created_at <- decode.field("created_at", timestamp_decoder())
   use updated_at <- decode.field("updated_at", timestamp_decoder())
-  decode.success(shared.User(id:, email:, name:, created_at:, updated_at:))
+  decode.success(shared.User(id:, email:, username:, created_at:, updated_at:))
 }
 
 fn timestamp_decoder() -> decode.Decoder(Timestamp) {
@@ -208,7 +214,7 @@ fn auth_page_view(mode: AuthMode, form: Form(AuthInput)) -> Element(Msg) {
   let fields = case mode {
     Signup -> [
       form_input_field(form, name: "email", type_: "email", label: "Email"),
-      form_input_field(form, name: "name", type_: "text", label: "Name"),
+      form_input_field(form, name: "username", type_: "text", label: "Username"),
       form_input_field(
         form,
         name: "password",
@@ -223,7 +229,7 @@ fn auth_page_view(mode: AuthMode, form: Form(AuthInput)) -> Element(Msg) {
       ),
     ]
     Login -> [
-      form_input_field(form, name: "name", type_: "text", label: "Name"),
+      form_input_field(form, name: "username", type_: "text", label: "Username"),
       form_input_field(
         form,
         name: "password",

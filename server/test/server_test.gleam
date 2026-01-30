@@ -48,7 +48,7 @@ pub fn insert_user_test() {
   let assert sql.InsertUserRow(
     id: _,
     email: "example@gmail.com",
-    name: "example",
+    username: "example",
     created_at: _,
     updated_at: _,
   ) = insert_user_row
@@ -56,7 +56,7 @@ pub fn insert_user_test() {
 // pub fn signup_user_test() {
 //   let body = [
 //     #("email", "example@gmail.com"),
-//     #("name", "example"),
+//     #("username", "example"),
 //     #("password", "password123"),
 //   ]
 //   let request =
