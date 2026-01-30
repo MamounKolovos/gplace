@@ -7,6 +7,7 @@ import gleam/http/response
 import gleam/json.{type Json}
 import gleam/list
 import gleam/result
+import gleam/string
 import gleam/time/timestamp.{type Timestamp}
 import gleam/uri
 import lustre
@@ -33,16 +34,42 @@ type Error {
   TransportFailure(rsvp.Error)
 }
 
+/// For model to show/hide form fields accordingly
+type AuthMode {
+  Signup
+  Login
+}
+
+/// Parsed form input
+type AuthInput {
+  SignupInput(email: String, name: String, password: String)
+  LoginInput(name: String, password: String)
+}
+
 type Model {
-  SignupPage(form: Form(shared.Signup))
+  AuthPage(mode: AuthMode, form: Form(AuthInput))
   MainPage(data: shared.User)
 }
 
 fn init(_args) -> #(Model, Effect(Msg)) {
-  #(SignupPage(signup_form()), effect.none())
+  #(AuthPage(mode: Signup, form: signup_form()), effect.none())
 }
 
-fn signup_form() -> Form(shared.Signup) {
+fn login_form() -> Form(AuthInput) {
+  form.new({
+    use name <- form.field("name", form.parse_string |> form.check_not_empty)
+    use password <- form.field(
+      "password",
+      form.parse_string
+        |> form.check_not_empty
+        |> form.check_string_length_more_than(8),
+    )
+
+    form.success(LoginInput(name:, password:))
+  })
+}
+
+fn signup_form() -> Form(AuthInput) {
   form.new({
     use email <- form.field("email", form.parse_email)
     use name <- form.field("name", form.parse_string |> form.check_not_empty)
@@ -58,22 +85,32 @@ fn signup_form() -> Form(shared.Signup) {
       form.parse_string |> form.check_confirms(password),
     )
 
-    form.success(shared.Signup(email:, name:, password:))
+    form.success(SignupInput(email:, name:, password:))
   })
 }
 
 type Msg {
-  UserClickedSignupButton(Result(shared.Signup, Form(shared.Signup)))
+  UserToggledAuthMode(AuthMode)
+  UserSubmittedAuthInput(Result(AuthInput, Form(AuthInput)))
   ApiReturnedUser(Result(shared.User, Error))
 }
 
 fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   case msg {
-    UserClickedSignupButton(result) ->
+    UserToggledAuthMode(mode) ->
+      case mode {
+        Signup -> #(AuthPage(Signup, signup_form()), effect.none())
+        Login -> #(AuthPage(Login, login_form()), effect.none())
+      }
+    UserSubmittedAuthInput(result) ->
       case result {
-        //add signupsubmitting model variant to disable buttons
-        Ok(signup) -> #(model, post_signup(signup))
-        Error(form) -> #(SignupPage(form), effect.none())
+        // add signupsubmitting model variant to disable buttons
+        Ok(input) -> #(model, submit_auth(input))
+        Error(form) ->
+          case model {
+            AuthPage(mode:, form: _) -> #(AuthPage(mode:, form:), effect.none())
+            model -> #(model, effect.none())
+          }
       }
     ApiReturnedUser(result) ->
       case result {
@@ -84,23 +121,28 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   }
 }
 
-fn post_signup(signup: shared.Signup) -> Effect(Msg) {
-  let assert Ok(uri) = rsvp.parse_relative_uri("/api/signup")
-  let assert Ok(request) = request.from_uri(uri)
-
-  let body =
-    uri.query_to_string([
-      #("email", signup.email),
-      #("name", signup.name),
-      #("password", signup.password),
+fn submit_auth(input: AuthInput) -> Effect(Msg) {
+  let #(path, body) = case input {
+    SignupInput(email, name, password) -> #("/api/signup", [
+      #("email", email),
+      #("name", name),
+      #("password", password),
     ])
 
+    LoginInput(name, password) -> #("/api/login", [
+      #("name", name),
+      #("password", password),
+    ])
+  }
+
+  let assert Ok(uri) = rsvp.parse_relative_uri(path)
+  let assert Ok(request) = request.from_uri(uri)
   let handler = expect_json(user_decoder(), ApiReturnedUser)
 
   request
   |> request.set_method(http.Post)
   |> request.set_header("content-type", "application/x-www-form-urlencoded")
-  |> request.set_body(body)
+  |> request.set_body(uri.query_to_string(body))
   |> rsvp.send(handler)
 }
 
@@ -157,20 +199,14 @@ fn api_error_code_decoder() -> decode.Decoder(shared.ApiErrorCode) {
 
 fn view(model: Model) -> Element(Msg) {
   case model {
-    SignupPage(form) -> signup_page_view(form)
+    AuthPage(mode:, form:) -> auth_page_view(mode, form)
     MainPage(_) -> html.text("successful sign in!")
   }
 }
 
-fn signup_page_view(form: Form(shared.Signup)) -> Element(Msg) {
-  html.form(
-    [
-      // prevents default submission and collects field values
-      event.on_submit(fn(fields) {
-        form |> form.add_values(fields) |> form.run |> UserClickedSignupButton
-      }),
-    ],
-    [
+fn auth_page_view(mode: AuthMode, form: Form(AuthInput)) -> Element(Msg) {
+  let fields = case mode {
+    Signup -> [
       form_input_field(form, name: "email", type_: "email", label: "Email"),
       form_input_field(form, name: "name", type_: "text", label: "Name"),
       form_input_field(
@@ -185,25 +221,114 @@ fn signup_page_view(form: Form(shared.Signup)) -> Element(Msg) {
         type_: "password",
         label: "Confirmation",
       ),
-      html.div([], [
-        html.input([
-          attribute.type_("submit"),
-          attribute.value("Sign up"),
-          attribute.styles([
-            #("margin-top", "1rem"),
-            #("padding", "0.6rem 1rem"),
-            #("background-color", "#2563eb"),
-            #("color", "white"),
-            #("font-weight", "600"),
-            #("border", "none"),
-            #("border-radius", "6px"),
-            #("cursor", "pointer"),
-            #("width", "100%"),
+    ]
+    Login -> [
+      form_input_field(form, name: "name", type_: "text", label: "Name"),
+      form_input_field(
+        form,
+        name: "password",
+        type_: "password",
+        label: "Password",
+      ),
+    ]
+  }
+
+  html.div([], [
+    auth_mode_toggle(mode),
+    html.form(
+      [
+        // prevents default submission and collects field values
+        event.on_submit(fn(fields) {
+          form
+          |> form.add_values(fields)
+          |> form.run
+          |> UserSubmittedAuthInput
+        }),
+      ],
+      [
+        element.fragment(fields),
+        html.div([], [
+          html.input([
+            attribute.type_("submit"),
+            attribute.value(case mode {
+              Signup -> "Sign up"
+              Login -> "Login"
+            }),
+            attribute.styles([
+              #("margin-top", "1rem"),
+              #("padding", "0.6rem 1rem"),
+              #("background-color", "#2563eb"),
+              #("color", "white"),
+              #("font-weight", "600"),
+              #("border", "none"),
+              #("border-radius", "6px"),
+              #("cursor", "pointer"),
+              #("width", "100%"),
+            ]),
           ]),
         ]),
-      ]),
-    ],
-  )
+      ],
+    ),
+  ])
+}
+
+fn auth_mode_toggle(mode: AuthMode) -> Element(Msg) {
+  // flex lays out the buttons horizontally
+  html.div([attribute.styles([#("display", "flex"), #("gap", "0.5rem")])], [
+    html.button(
+      [
+        event.on_click(UserToggledAuthMode(Signup)),
+        attribute.styles([
+          // forces buttons to take equal width regardless of text
+          #("flex", "1"),
+          #("padding", "0.5rem"),
+          #("border-radius", "0.5rem"),
+          #("text-align", "center"),
+          #("font-weight", case mode {
+            Signup -> "600"
+            Login -> "400"
+          }),
+          #("background-color", case mode {
+            Signup -> "#ffffff"
+            Login -> "#f3f4f6"
+          }),
+          #("color", case mode {
+            Signup -> "#000000"
+            Login -> "#9ca3af"
+          }),
+          #("cursor", "pointer"),
+          #("border", "1px solid #d1d5db"),
+        ]),
+      ],
+      [element.text("Sign up")],
+    ),
+    html.button(
+      [
+        event.on_click(UserToggledAuthMode(Login)),
+        attribute.styles([
+          #("flex", "1"),
+          #("padding", "0.5rem"),
+          #("border-radius", "0.5rem"),
+          #("text-align", "center"),
+          #("font-weight", case mode {
+            Login -> "600"
+            Signup -> "400"
+          }),
+          #("background-color", case mode {
+            Login -> "#ffffff"
+            Signup -> "#f3f4f6"
+          }),
+          #("color", case mode {
+            Login -> "#000000"
+            Signup -> "#9ca3af"
+          }),
+          #("cursor", "pointer"),
+          #("border", "1px solid #d1d5db"),
+        ]),
+      ],
+      [element.text("Log in")],
+    ),
+  ])
 }
 
 fn form_input_field(
@@ -212,11 +337,12 @@ fn form_input_field(
   type_ type_: String,
   label label_text: String,
 ) -> Element(Msg) {
-  let errors = form.field_error_messages(form, name)
-  let styles =
+  let label_styles =
     attribute.styles([#("display", "block"), #("margin-bottom", "0.75rem")])
 
-  html.label([styles], [
+  let errors = form.field_error_messages(form, name)
+
+  html.label([label_styles], [
     element.text(label_text),
     html.input([
       attribute.type_(type_),
@@ -241,7 +367,6 @@ fn form_input_field(
       }
     ]),
 
-    list.map(errors, fn(error) { html.small([], [element.text(error)]) })
-      |> element.fragment,
+    html.small([], [errors |> string.join(with: ", ") |> element.text]),
   ])
 }
