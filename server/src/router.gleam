@@ -24,7 +24,7 @@ pub fn handle_request(request: Request, ctx: Context) -> Response {
   }
 }
 
-type SignupError {
+type Error {
   // HashFailure(argus.HashError)
   InvalidQuery(pog.QueryError)
   UnexpectedQueryResult
@@ -101,7 +101,7 @@ fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
 
 fn one(
   query_result: Result(pog.Returned(row), pog.QueryError),
-) -> Result(row, SignupError) {
+) -> Result(row, Error) {
   use returned <- result.try(query_result |> result.map_error(InvalidQuery))
   use row <- result.try(
     returned.rows |> list.first |> result.replace_error(UnexpectedQueryResult),
@@ -111,7 +111,7 @@ fn one(
 
 fn zero(
   query_result: Result(pog.Returned(Nil), pog.QueryError),
-) -> Result(Nil, SignupError) {
+) -> Result(Nil, Error) {
   case query_result {
     Ok(_) -> Ok(Nil)
     Error(error) -> Error(InvalidQuery(error))
