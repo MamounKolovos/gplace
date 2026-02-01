@@ -103,10 +103,10 @@ fn one(
   query_result: Result(pog.Returned(row), pog.QueryError),
 ) -> Result(row, Error) {
   use returned <- result.try(query_result |> result.map_error(InvalidQuery))
-  use row <- result.try(
-    returned.rows |> list.first |> result.replace_error(UnexpectedQueryResult),
-  )
-  Ok(row)
+  case returned.rows {
+    [row] -> Ok(row)
+    _ -> Error(UnexpectedQueryResult)
+  }
 }
 
 fn zero(
