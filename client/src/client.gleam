@@ -7,16 +7,18 @@ import gleam/http/response
 import gleam/int
 import gleam/json.{type Json}
 import gleam/list
+import gleam/option.{None}
 import gleam/result
 import gleam/string
 import gleam/time/timestamp.{type Timestamp}
-import gleam/uri
+import gleam/uri.{type Uri}
 import lustre
 import lustre/attribute
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
+import modem
 import rsvp
 import shared
 
@@ -35,12 +37,6 @@ type Error {
   TransportFailure(rsvp.Error)
 }
 
-/// For model to show/hide form fields accordingly
-type AuthMode {
-  Signup
-  Login
-}
-
 /// Parsed form input
 type AuthInput {
   SignupInput(email: String, username: String, password: String)
@@ -52,12 +48,49 @@ type User {
 }
 
 type Model {
-  AuthPage(mode: AuthMode, form: Form(AuthInput))
+  Model(route: Route, page: Page, shared: Shared)
+}
+
+type Page {
+  AuthPage(form: Form(AuthInput))
   MainPage(data: User)
 }
 
+type Route {
+  Auth(AuthRoute)
+  Profile
+}
+
+type AuthRoute {
+  Signup
+  Login
+}
+
+type Shared {
+  Shared
+}
+
 fn init(_args) -> #(Model, Effect(Msg)) {
-  #(AuthPage(mode: Signup, form: signup_form()), effect.none())
+  #(
+    Model(
+      route: Auth(Signup),
+      page: AuthPage(form: signup_form()),
+      shared: Shared,
+    ),
+    effect.batch([
+      modem.replace("/signup", None, None),
+      modem.init(on_url_change),
+    ]),
+  )
+}
+
+fn on_url_change(uri: Uri) -> Msg {
+  case uri.path_segments(uri.path) {
+    ["signup"] -> OnRouteChange(Auth(Signup))
+    ["login"] -> OnRouteChange(Auth(Login))
+    ["profile"] -> OnRouteChange(Profile)
+    _ -> OnRouteChange(Auth(Signup))
+  }
 }
 
 fn login_form() -> Form(AuthInput) {
@@ -101,31 +134,34 @@ fn signup_form() -> Form(AuthInput) {
 }
 
 type Msg {
-  UserToggledAuthMode(AuthMode)
+  OnRouteChange(Route)
   UserSubmittedAuthInput(Result(AuthInput, Form(AuthInput)))
   ApiReturnedUser(Result(User, Error))
 }
 
 fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   case msg {
-    UserToggledAuthMode(mode) ->
-      case mode {
-        Signup -> #(AuthPage(Signup, signup_form()), effect.none())
-        Login -> #(AuthPage(Login, login_form()), effect.none())
+    OnRouteChange(route) ->
+      case route {
+        Auth(Signup) -> #(
+          Model(..model, route:, page: AuthPage(signup_form())),
+          effect.none(),
+        )
+        Auth(Login) -> #(
+          Model(..model, route:, page: AuthPage(login_form())),
+          effect.none(),
+        )
+        _ -> #(Model(..model, route:), effect.none())
       }
     UserSubmittedAuthInput(result) ->
       case result {
         // add signupsubmitting model variant to disable buttons
         Ok(input) -> #(model, submit_auth(input))
-        Error(form) ->
-          case model {
-            AuthPage(mode:, form: _) -> #(AuthPage(mode:, form:), effect.none())
-            model -> #(model, effect.none())
-          }
+        Error(form) -> #(Model(..model, page: AuthPage(form:)), effect.none())
       }
     ApiReturnedUser(result) ->
       case result {
-        Ok(user) -> #(MainPage(user), effect.none())
+        Ok(user) -> #(Model(..model, page: MainPage(user)), effect.none())
         // add error to model to render
         Error(_) -> #(model, effect.none())
       }
@@ -196,27 +232,25 @@ fn api_error_code_decoder() -> decode.Decoder(shared.ApiErrorCode) {
   case variant {
     "INVALID_FORM" -> decode.success(shared.InvalidFormCode)
     "INTERNAL_ERROR" -> decode.success(shared.InternalError)
+    // "UNAUTHORIZED" -> decode.success(shared.Unauthorized)
     _ -> decode.failure(shared.InternalError, "ApiErrorCode")
   }
 }
 
 fn view(model: Model) -> Element(Msg) {
-  case model {
-    AuthPage(mode:, form:) -> auth_page_view(mode, form)
-    MainPage(data:) ->
-      html.text(
-        "successful sign in! "
-        <> "id: "
-        <> int.to_string(data.id)
-        <> ", "
-        <> "username: "
-        <> data.username,
-      )
+  case model.route, model.page {
+    Auth(route), AuthPage(form:) -> auth_page_view(route, form)
+    Profile, MainPage(data:) -> profile_page_view(data)
+    _, _ -> html.text("not found :9")
   }
 }
 
-fn auth_page_view(mode: AuthMode, form: Form(AuthInput)) -> Element(Msg) {
-  let fields = case mode {
+fn profile_page_view(user: User) -> Element(Msg) {
+  html.button([], [element.text("Profile")])
+}
+
+fn auth_page_view(route: AuthRoute, form: Form(AuthInput)) -> Element(Msg) {
+  let fields = case route {
     Signup -> [
       form_input_field(form, name: "email", type_: "email", label: "Email"),
       form_input_field(form, name: "username", type_: "text", label: "Username"),
@@ -245,7 +279,7 @@ fn auth_page_view(mode: AuthMode, form: Form(AuthInput)) -> Element(Msg) {
   }
 
   html.div([], [
-    auth_mode_toggle(mode),
+    auth_mode_toggle(route),
     html.form(
       [
         // prevents default submission and collects field values
@@ -261,7 +295,7 @@ fn auth_page_view(mode: AuthMode, form: Form(AuthInput)) -> Element(Msg) {
         html.div([], [
           html.input([
             attribute.type_("submit"),
-            attribute.value(case mode {
+            attribute.value(case route {
               Signup -> "Sign up"
               Login -> "Login"
             }),
@@ -283,27 +317,27 @@ fn auth_page_view(mode: AuthMode, form: Form(AuthInput)) -> Element(Msg) {
   ])
 }
 
-fn auth_mode_toggle(mode: AuthMode) -> Element(Msg) {
+fn auth_mode_toggle(route: AuthRoute) -> Element(Msg) {
   // flex lays out the buttons horizontally
   html.div([attribute.styles([#("display", "flex"), #("gap", "0.5rem")])], [
-    html.button(
+    html.a(
       [
-        event.on_click(UserToggledAuthMode(Signup)),
+        attribute.href("/signup"),
         attribute.styles([
           // forces buttons to take equal width regardless of text
           #("flex", "1"),
           #("padding", "0.5rem"),
           #("border-radius", "0.5rem"),
           #("text-align", "center"),
-          #("font-weight", case mode {
+          #("font-weight", case route {
             Signup -> "600"
             Login -> "400"
           }),
-          #("background-color", case mode {
+          #("background-color", case route {
             Signup -> "#ffffff"
             Login -> "#f3f4f6"
           }),
-          #("color", case mode {
+          #("color", case route {
             Signup -> "#000000"
             Login -> "#9ca3af"
           }),
@@ -313,23 +347,23 @@ fn auth_mode_toggle(mode: AuthMode) -> Element(Msg) {
       ],
       [element.text("Sign up")],
     ),
-    html.button(
+    html.a(
       [
-        event.on_click(UserToggledAuthMode(Login)),
+        attribute.href("/login"),
         attribute.styles([
           #("flex", "1"),
           #("padding", "0.5rem"),
           #("border-radius", "0.5rem"),
           #("text-align", "center"),
-          #("font-weight", case mode {
+          #("font-weight", case route {
             Login -> "600"
             Signup -> "400"
           }),
-          #("background-color", case mode {
+          #("background-color", case route {
             Login -> "#ffffff"
             Signup -> "#f3f4f6"
           }),
-          #("color", case mode {
+          #("color", case route {
             Login -> "#000000"
             Signup -> "#9ca3af"
           }),
