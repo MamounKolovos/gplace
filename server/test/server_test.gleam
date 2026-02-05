@@ -1,11 +1,15 @@
 import gleam/http
 import gleam/http/request
 import gleam/json
+import gleam/time/duration
+import gleam/time/timestamp
 import gleam/uri
 import gleeunit
 import global_value
 import pog
 import server
+import server/auth
+import server/error
 import server/router
 import server/sql
 import server/web.{type Context, Context}
@@ -84,6 +88,68 @@ pub fn insert_user_duplicate_username_test() {
     detail: _,
   )) =
     sql.insert_user(conn, "different_email@gmail.com", "example", "password123")
+}
+
+pub fn signup_test() {
+  use conn <- with_connection()
+
+  let assert Ok(#(created_user, session_token)) =
+    auth.signup(
+      conn,
+      email: "example@gmail.com",
+      username: "example",
+      password: "password123",
+      session_expires_in: duration.seconds(10),
+    )
+
+  let assert Ok(authenticated_user) =
+    auth.authenticate(
+      conn,
+      session_token: session_token,
+      now: timestamp.add(timestamp.system_time(), duration.seconds(5)),
+    )
+
+  assert created_user == authenticated_user
+}
+
+pub fn session_expired_test() {
+  use conn <- with_connection()
+
+  let assert Ok(#(_, session_token)) =
+    auth.signup(
+      conn,
+      email: "example@gmail.com",
+      username: "example",
+      password: "password123",
+      session_expires_in: duration.seconds(10),
+    )
+
+  let assert Error(error.InvalidSession(reason: _)) =
+    auth.authenticate(
+      conn,
+      session_token: session_token,
+      now: timestamp.add(timestamp.system_time(), duration.seconds(50)),
+    )
+}
+
+pub fn session_expired1_test() {
+  use conn <- with_connection()
+
+  let assert Ok(#(_, session_token)) =
+    auth.signup(
+      conn,
+      email: "example@gmail.com",
+      username: "example",
+      password: "password123",
+      session_expires_in: duration.seconds(10),
+    )
+
+  let assert Error(error.InvalidSession(reason: _)) =
+    auth.authenticate(
+      conn,
+      session_token: session_token,
+      now: timestamp.add(timestamp.system_time(), duration.seconds(50)),
+    )
 }
 // pub fn signup_user_test() {
 //   let body = [

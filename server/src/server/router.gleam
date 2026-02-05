@@ -10,8 +10,10 @@ import gleam/result
 import gleam/time/duration.{type Duration}
 import gleam/time/timestamp.{type Timestamp}
 import pog
+import server/auth
 import server/error.{type Error}
 import server/sql
+import server/user
 import server/web.{type Context}
 import shared
 import wisp.{type Request, type Response}
@@ -46,27 +48,16 @@ fn me(request: wisp.Request, ctx: Context) -> wisp.Response {
       )),
     )
 
-    let token_hash =
-      session_token |> uuid.to_bit_array |> crypto.hash(crypto.Sha256, _)
-
-    use returned <- result.try(
-      sql.select_user_by_session(ctx.db, token_hash, timestamp.system_time())
-      |> result.map_error(error.InvalidQuery),
+    auth.authenticate(
+      ctx.db,
+      session_token: session_token,
+      now: timestamp.system_time(),
     )
-
-    use row <- result.try(case returned.rows {
-      [row] -> Ok(row)
-      _ -> Error(error.InvalidSession("session expired or session not found"))
-    })
-
-    let user = select_user_by_session_row_to_user(row)
-
-    Ok(user)
   }
 
   case result {
     Ok(user) ->
-      user |> user_to_json |> json.to_string |> wisp.json_response(200)
+      user |> user.to_json |> json.to_string |> wisp.json_response(200)
     Error(error.InvalidSession(reason:)) -> {
       wisp.log_error(reason)
       unauthorized()
@@ -75,61 +66,19 @@ fn me(request: wisp.Request, ctx: Context) -> wisp.Response {
   }
 }
 
-fn select_user_by_session_row_to_user(row: sql.SelectUserBySessionRow) -> User {
-  User(
-    id: row.id,
-    email: row.email,
-    username: row.username,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  )
-}
-
 fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
   use form_data <- wisp.require_form(request)
   let form = signup_form() |> form.add_values(form_data.values)
 
   let result = case form.run(form) {
     Ok(signup) -> {
-      // use hashes <- result.try(
-      //   argus.hasher()
-      //   |> argus.hash_length(12)
-      //   |> argus.hash(signup.password, argus.gen_salt())
-      //   |> result.map_error(HashFailure),
-      // )
-      // use returned <- result.try(
-      //   sql.insert_user(
-      //     ctx.conn,
-      //     signup.email,
-      //     signup.username,
-      //     hashes.encoded_hash,
-      //   )
-      //   |> result.map_error(InvalidQuery),
-      // )
-      use insert_user_row <- result.try(
-        // TEMPORARY until jargon adds windows support
-        sql.insert_user(ctx.db, signup.email, signup.username, signup.password)
-        |> one,
+      auth.signup(
+        ctx.db,
+        email: signup.email,
+        username: signup.username,
+        password: signup.password,
+        session_expires_in: duration.seconds(session_duration_seconds),
       )
-
-      let user = insert_user_row_to_user(insert_user_row)
-
-      let expires_at =
-        timestamp.add(
-          timestamp.system_time(),
-          duration.seconds(session_duration_seconds),
-        )
-
-      let session_token = uuid.v4()
-      let token_hash =
-        session_token |> uuid.to_bit_array |> crypto.hash(crypto.Sha256, _)
-
-      use _ <- result.try(
-        sql.insert_session(ctx.db, token_hash, user.id, expires_at)
-        |> zero,
-      )
-
-      Ok(#(user, session_token))
     }
     Error(form) -> Error(error.InvalidForm(form))
   }
@@ -137,7 +86,7 @@ fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
   case result {
     Ok(#(user, session_token)) ->
       user
-      |> user_to_json
+      |> user.to_json
       |> json.to_string
       |> wisp.json_response(201)
       |> wisp.set_cookie(
@@ -151,27 +100,6 @@ fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
     Error(error.UnexpectedQueryResult) -> internal_error()
     Error(error.InvalidForm(form)) -> invalid_form("Some fields are invalid")
     Error(_) -> internal_error()
-  }
-}
-
-pub fn one(
-  query_result: Result(pog.Returned(row), pog.QueryError),
-) -> Result(row, Error(f)) {
-  use returned <- result.try(
-    query_result |> result.map_error(error.InvalidQuery),
-  )
-  case returned.rows {
-    [row] -> Ok(row)
-    _ -> Error(error.UnexpectedQueryResult)
-  }
-}
-
-pub fn zero(
-  query_result: Result(pog.Returned(Nil), pog.QueryError),
-) -> Result(Nil, Error(f)) {
-  case query_result {
-    Ok(_) -> Ok(Nil)
-    Error(error) -> Error(error.InvalidQuery(error))
   }
 }
 
@@ -224,23 +152,6 @@ fn api_error_to_json(api_error: shared.ApiError) -> Json {
   ])
 }
 
-pub type User {
-  User(
-    id: Int,
-    email: String,
-    username: String,
-    created_at: Timestamp,
-    updated_at: Timestamp,
-  )
-}
-
-fn user_to_json(user: User) -> Json {
-  json.object([
-    #("id", json.int(user.id)),
-    #("username", json.string(user.username)),
-  ])
-}
-
 pub type Signup {
   Signup(email: String, username: String, password: String)
 }
@@ -261,14 +172,4 @@ fn signup_form() -> Form(Signup) {
 
     form.success(Signup(email:, username:, password:))
   })
-}
-
-pub fn insert_user_row_to_user(row: sql.InsertUserRow) -> User {
-  User(
-    id: row.id,
-    email: row.email,
-    username: row.username,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  )
 }
