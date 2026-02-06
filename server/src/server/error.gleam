@@ -11,6 +11,7 @@ pub type Error(f) {
   UnexpectedQueryResult
   InvalidForm(Form(f))
   InvalidSession(reason: String)
+  InvalidCredentials
 }
 
 pub fn to_string(error: Error(f)) -> String {
@@ -57,5 +58,7 @@ pub fn to_string(error: Error(f)) -> String {
     UnexpectedQueryResult -> "unexpected query result"
     InvalidForm(_) -> "invalid form"
     InvalidSession(reason:) -> "invalid session. reason: " <> reason
+    InvalidCredentials ->
+      "invalid credentials. username or password was incorrect"
   }
 }

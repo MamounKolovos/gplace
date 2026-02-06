@@ -33,6 +33,18 @@ pub fn insert(
   |> result.map(from_insert_user_row)
 }
 
+pub fn from_select_user_by_username_row(
+  row: sql.SelectUserByUsernameRow,
+) -> User {
+  User(
+    id: row.id,
+    email: row.email,
+    username: row.username,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  )
+}
+
 pub fn from_select_user_by_session_row(row: sql.SelectUserBySessionRow) -> User {
   User(
     id: row.id,

@@ -38,6 +38,20 @@ pub fn select_user_by_session(
   }
 }
 
+pub fn select_user_by_username(
+  db db: pog.Connection,
+  username username: String,
+) -> Result(Option(sql.SelectUserByUsernameRow), Error(f)) {
+  sql.select_user_by_username(db, username) |> maybe_one
+}
+
+pub fn delete_session_by_token_hash(
+  db db: pog.Connection,
+  token_hash token_hash: BitArray,
+) -> Result(Nil, Error(f)) {
+  sql.delete_session_by_token_hash(db, token_hash) |> zero
+}
+
 fn one(
   query_result: Result(pog.Returned(row), pog.QueryError),
 ) -> Result(row, Error(f)) {

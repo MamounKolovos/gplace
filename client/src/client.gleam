@@ -272,6 +272,7 @@ fn api_error_code_decoder() -> decode.Decoder(shared.ApiErrorCode) {
     "INVALID_FORM" -> decode.success(shared.InvalidFormCode)
     "INTERNAL_ERROR" -> decode.success(shared.InternalError)
     "UNAUTHORIZED" -> decode.success(shared.Unauthorized)
+    "INVALID_CREDENTIALS" -> decode.success(shared.InvalidCredentials)
     _ -> decode.failure(shared.InternalError, "ApiErrorCode")
   }
 }
