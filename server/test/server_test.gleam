@@ -1,8 +1,9 @@
 import gleam/http
 import gleam/http/request
 import gleam/json
-import gleam/time/duration
-import gleam/time/timestamp
+import gleam/option.{Some}
+import gleam/time/duration.{type Duration}
+import gleam/time/timestamp.{type Timestamp}
 import gleam/uri
 import gleeunit
 import global_value
@@ -33,13 +34,6 @@ fn with_connection(test_case: fn(pog.Connection) -> a) -> Nil {
       test_case(conn)
       Error(Nil)
     })
-  Nil
-}
-
-fn with_context(test_case: fn(Context) -> a) -> Nil {
-  use conn <- with_connection()
-  let ctx = Context(conn)
-  test_case(ctx)
   Nil
 }
 
@@ -100,6 +94,7 @@ pub fn signup_test() {
       username: "example",
       password: "password123",
       session_expires_in: duration.seconds(10),
+      now: timestamp.system_time(),
     )
 
   let assert Ok(authenticated_user) =
@@ -122,6 +117,7 @@ pub fn session_expired_test() {
       username: "example",
       password: "password123",
       session_expires_in: duration.seconds(10),
+      now: timestamp.system_time(),
     )
 
   let assert Error(error.InvalidSession(reason: _)) =
@@ -131,18 +127,111 @@ pub fn session_expired_test() {
       now: timestamp.add(timestamp.system_time(), duration.seconds(50)),
     )
 }
-// pub fn signup_user_test() {
-//   let body = [
-//     #("email", "example@gmail.com"),
-//     #("username", "example"),
-//     #("password", "password123"),
-//   ]
-//   let request =
-//     simulate.request(http.Post, "/api/signup")
-//     |> simulate.form_body(body)
 
-//   use ctx <- with_context()
-//   let response = router.handle_request(request, ctx)
-//   let body = simulate.read_body(response)
-//   todo
+pub fn login_with_valid_session_test() {
+  use conn <- with_connection()
+
+  let now = timestamp.system_time()
+
+  let assert Ok(#(_, signup_session_token)) =
+    auth.signup(
+      conn,
+      email: "example@gmail.com",
+      username: "example",
+      password: "password123",
+      session_expires_in: duration.seconds(1000),
+      now: now,
+    )
+
+  let assert Ok(#(_, login_session_token)) =
+    auth.login_with_session(
+      conn,
+      old_session_token: signup_session_token,
+      expires_in: duration.seconds(10),
+      now: now,
+    )
+
+  // makes sure new session is valid
+  let assert Ok(_) =
+    auth.authenticate(conn, session_token: login_session_token, now: now)
+
+  // makes sure old session was fully replaced and no longer valid
+  let assert Error(error.InvalidSession(_)) =
+    auth.authenticate(conn, session_token: signup_session_token, now: now)
+}
+
+pub fn login_with_valid_credentials_test() {
+  use conn <- with_connection()
+
+  let now = timestamp.system_time()
+
+  let assert Ok(#(created_user, _)) =
+    auth.signup(
+      conn,
+      email: "example@gmail.com",
+      username: "example",
+      password: "password123",
+      session_expires_in: duration.seconds(1000),
+      now: now,
+    )
+
+  let assert Ok(#(authenticated_user, session_token)) =
+    auth.login_with_credentials(
+      conn,
+      username: "example",
+      password: "password123",
+      session_expires_in: duration.seconds(10),
+      now: now,
+    )
+
+  assert created_user == authenticated_user
+
+  let assert Ok(_) =
+    auth.authenticate(conn, session_token: session_token, now: now)
+}
+
+pub fn login_with_invalid_credentials_test() {
+  use conn <- with_connection()
+
+  let now = timestamp.system_time()
+
+  let assert Ok(_) =
+    auth.signup(
+      conn,
+      email: "example@gmail.com",
+      username: "example",
+      password: "password123",
+      session_expires_in: duration.seconds(1000),
+      now: now,
+    )
+
+  let assert Error(error.InvalidCredentials) =
+    auth.login_with_credentials(
+      conn,
+      username: "wrong_username",
+      password: "password123",
+      session_expires_in: duration.seconds(10),
+      now: now,
+    )
+
+  let assert Error(error.InvalidCredentials) =
+    auth.login_with_credentials(
+      conn,
+      username: "example",
+      password: "wrong_password",
+      session_expires_in: duration.seconds(10),
+      now: now,
+    )
+}
+// pub fn login_integration_test() {
+//   let body = [#("username", "example"), #("password", "password123")]
+
+//   let request =
+//     simulate.request(http.Post, "/api/login") |> simulate.form_body(body)
+
+//   use conn <- with_connection()
+//   let ctx = Context(db: conn)
+
+//   let response_body =
+//     request |> router.handle_request(ctx) |> simulate.read_body
 // }

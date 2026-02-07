@@ -31,6 +31,7 @@ pub fn signup(
   username username: String,
   password password: String,
   session_expires_in duration: Duration,
+  now now: Timestamp,
 ) -> Result(#(User, Uuid), Error(f)) {
   // use hashes <- result.try(
   //   argus.hasher()
@@ -49,82 +50,76 @@ pub fn signup(
   use session_token <- result.try(insert_session(
     db,
     for: user,
+    at: now,
     expires_in: duration,
   ))
 
   Ok(#(user, session_token))
 }
 
-pub fn login(
+pub fn login_with_session(
+  db db: pog.Connection,
+  old_session_token token: Uuid,
+  expires_in duration: Duration,
+  now now: Timestamp,
+) -> Result(#(User, Uuid), Error(f)) {
+  use user <- result.try(authenticate(db, session_token: token, now: now))
+
+  use token <- result.try(refresh_session(
+    db,
+    for: user,
+    old_token: token,
+    at: now,
+    expires_in: duration,
+  ))
+
+  Ok(#(user, token))
+}
+
+pub fn login_with_credentials(
   db db: pog.Connection,
   username username: String,
   password password: String,
-  session_token session_token: Option(Uuid),
   session_expires_in duration: Duration,
   now now: Timestamp,
 ) -> Result(#(User, Uuid), Error(f)) {
-  use option <- result.try(case session_token {
-    Some(session_token) -> {
-      let result = authenticate(db, session_token: session_token, now: now)
+  use row <- result.try(
+    case database.select_user_by_username(db, username: username) {
+      Ok(Some(row)) -> Ok(row)
+      Ok(None) -> Error(error.InvalidCredentials)
+      Error(error) -> Error(error)
+    },
+  )
 
-      case result {
-        Ok(user) -> Ok(Some(#(user, session_token)))
-        Error(error.InvalidSession(_)) -> Ok(None)
-        Error(error) -> Error(error)
-      }
-    }
-    None -> Ok(None)
-  })
+  // use hashes <- result.try(
+  //   argus.hasher()
+  //   |> argus.hash_length(12)
+  //   |> argus.hash(password, argus.gen_salt())
+  //   |> result.map_error(HashFailure),
+  // )
 
-  case option {
-    Some(#(user, session_token)) -> {
-      use session_token <- result.try(refresh_session(
-        db,
-        for: user,
-        old_token: session_token,
-        expires_in: duration,
-      ))
+  use <- bool.guard(
+    password != row.password_hash,
+    return: Error(error.InvalidCredentials),
+  )
 
-      Ok(#(user, session_token))
-    }
-    None -> {
-      use row <- result.try(
-        case database.select_user_by_username(db, username: username) {
-          Ok(Some(row)) -> Ok(row)
-          Ok(None) -> Error(error.InvalidCredentials)
-          Error(error) -> Error(error)
-        },
-      )
+  let user = row |> user.from_select_user_by_username_row
 
-      // use hashes <- result.try(
-      //   argus.hasher()
-      //   |> argus.hash_length(12)
-      //   |> argus.hash(password, argus.gen_salt())
-      //   |> result.map_error(HashFailure),
-      // )
+  use session_token <- result.try(insert_session(
+    db,
+    for: user,
+    at: now,
+    expires_in: duration,
+  ))
 
-      use <- bool.guard(
-        password != row.password_hash,
-        return: Error(error.InvalidCredentials),
-      )
-
-      let user = row |> user.from_select_user_by_username_row
-
-      use session_token <- result.try(insert_session(
-        db,
-        for: user,
-        expires_in: duration,
-      ))
-
-      Ok(#(user, session_token))
-    }
-  }
+  Ok(#(user, session_token))
 }
 
 fn refresh_session(
   db db: pog.Connection,
   for user: User,
   old_token token: Uuid,
+  at now: Timestamp,
   expires_in duration: Duration,
 ) -> Result(Uuid, Error(f)) {
   let token_hash = token |> uuid.to_bit_array |> crypto.hash(crypto.Sha256, _)
@@ -134,7 +129,12 @@ fn refresh_session(
     token_hash: token_hash,
   ))
 
-  use token <- result.try(insert_session(db, for: user, expires_in: duration))
+  use token <- result.try(insert_session(
+    db,
+    for: user,
+    at: now,
+    expires_in: duration,
+  ))
 
   Ok(token)
 }
@@ -142,13 +142,14 @@ fn refresh_session(
 fn insert_session(
   db db: pog.Connection,
   for user: User,
+  at now: Timestamp,
   expires_in duration: Duration,
 ) -> Result(Uuid, Error(f)) {
   let session_token = uuid.v4()
   let token_hash =
     session_token |> uuid.to_bit_array |> crypto.hash(crypto.Sha256, _)
 
-  let expires_at = timestamp.add(timestamp.system_time(), duration)
+  let expires_at = timestamp.add(now, duration)
 
   use _ <- result.try(database.insert_session(
     db,

@@ -82,14 +82,41 @@ fn login(request: wisp.Request, ctx: Context) -> wisp.Response {
         |> result.try(uuid.from_string)
         |> option.from_result
 
-      auth.login(
-        ctx.db,
-        username: login_data.username,
-        password: login_data.password,
-        session_token: session_token,
-        session_expires_in: duration.seconds(session_duration_seconds),
-        now: timestamp.system_time(),
-      )
+      let now = timestamp.system_time()
+      let session_duration = duration.seconds(session_duration_seconds)
+
+      case session_token {
+        Some(session_token) -> {
+          let result =
+            auth.login_with_session(
+              ctx.db,
+              old_session_token: session_token,
+              expires_in: session_duration,
+              now: now,
+            )
+
+          case result {
+            Ok(result) -> Ok(result)
+            Error(error.InvalidSession(_)) ->
+              auth.login_with_credentials(
+                ctx.db,
+                username: login_data.username,
+                password: login_data.password,
+                session_expires_in: session_duration,
+                now: now,
+              )
+            Error(error) -> Error(error)
+          }
+        }
+        None ->
+          auth.login_with_credentials(
+            ctx.db,
+            username: login_data.username,
+            password: login_data.password,
+            session_expires_in: session_duration,
+            now: now,
+          )
+      }
     }
     Error(form) -> Error(error.InvalidForm(form))
   }
@@ -148,6 +175,7 @@ fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
         username: signup.username,
         password: signup.password,
         session_expires_in: duration.seconds(session_duration_seconds),
+        now: timestamp.system_time(),
       )
     }
     Error(form) -> Error(error.InvalidForm(form))
