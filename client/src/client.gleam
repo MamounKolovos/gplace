@@ -1,3 +1,4 @@
+import api_error.{type ApiError, ApiError}
 import formal/form.{type Form}
 import gleam/dynamic/decode
 import gleam/float
@@ -20,7 +21,6 @@ import lustre/element/html
 import lustre/event
 import modem
 import rsvp
-import shared
 
 pub fn main() -> Nil {
   let app = lustre.application(init, update, view)
@@ -31,7 +31,7 @@ pub fn main() -> Nil {
 //TODO: add error_to_string
 type Error {
   /// The api call failed with some domain-specific error
-  ApiFailure(shared.ApiError)
+  ApiFailure(ApiError)
   InvalidApiResponse(String)
   /// There was a network problem or something else went wrong with the request itself
   TransportFailure(rsvp.Error)
@@ -195,7 +195,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
             modem.replace("/profile", None, None),
           )
         }
-        Error(ApiFailure(shared.ApiError(code: _, message:))) ->
+        Error(ApiFailure(ApiError(code: _, message:))) ->
           case model.route {
             Auth(Signup) -> #(
               Model(
@@ -264,7 +264,7 @@ fn expect_json(
   let response = case res {
     Ok(data) -> Ok(data)
     Error(rsvp.HttpError(response)) ->
-      case json.parse(response.body, api_error_decoder()) {
+      case json.parse(response.body, api_error.decoder()) {
         Ok(api_error) -> Error(ApiFailure(api_error))
         Error(_decode_error) -> Error(InvalidApiResponse(response.body))
       }
@@ -278,27 +278,6 @@ fn user_decoder() -> decode.Decoder(User) {
   use id <- decode.field("id", decode.int)
   use username <- decode.field("username", decode.string)
   decode.success(User(id:, username:))
-}
-
-fn api_error_decoder() -> decode.Decoder(shared.ApiError) {
-  let decoder = {
-    use code <- decode.field("code", api_error_code_decoder())
-    use message <- decode.field("message", decode.string)
-    decode.success(shared.ApiError(code:, message:))
-  }
-  decode.at(["error"], decoder)
-}
-
-fn api_error_code_decoder() -> decode.Decoder(shared.ApiErrorCode) {
-  use variant <- decode.then(decode.string)
-  case variant {
-    "INVALID_FORM" -> decode.success(shared.InvalidForm)
-    "INTERNAL_ERROR" -> decode.success(shared.InternalError)
-    "UNAUTHORIZED" -> decode.success(shared.Unauthorized)
-    "INVALID_CREDENTIALS" -> decode.success(shared.InvalidCredentials)
-    "DUPLICATE_IDENTIFIER" -> decode.success(shared.DuplicateIdentifier)
-    _ -> decode.failure(shared.InternalError, "ApiErrorCode")
-  }
 }
 
 fn view(model: Model) -> Element(Msg) {

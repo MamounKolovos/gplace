@@ -1,3 +1,4 @@
+import api_error.{type ApiError, ApiError}
 import argus
 import formal/form.{type Form}
 import gleam/bit_array
@@ -15,7 +16,6 @@ import server/auth
 import server/sql
 import server/user
 import server/web.{type Context}
-import shared
 import wisp.{type Request, type Response}
 import youid/uuid
 
@@ -204,61 +204,61 @@ fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
   }
 }
 
-fn api_error_code_to_json(code: shared.ApiErrorCode) -> Json {
+fn api_error_code_to_json(code: api_error.Code) -> Json {
   case code {
-    shared.InvalidForm -> "INVALID_FORM"
-    shared.InternalError -> "INTERNAL_ERROR"
-    shared.Unauthorized -> "UNAUTHORIZED"
-    shared.InvalidCredentials -> "INVALID_CREDENTIALS"
-    shared.DuplicateIdentifier -> "DUPLICATE_IDENTIFIER"
+    api_error.InvalidForm -> "INVALID_FORM"
+    api_error.InternalError -> "INTERNAL_ERROR"
+    api_error.Unauthorized -> "UNAUTHORIZED"
+    api_error.InvalidCredentials -> "INVALID_CREDENTIALS"
+    api_error.DuplicateIdentifier -> "DUPLICATE_IDENTIFIER"
   }
   |> json.string
 }
 
-fn api_error_code_status(code: shared.ApiErrorCode) -> Int {
+fn api_error_code_status(code: api_error.Code) -> Int {
   case code {
-    shared.InvalidForm -> 400
-    shared.InternalError -> 500
-    shared.Unauthorized -> 401
-    shared.InvalidCredentials -> 401
-    shared.DuplicateIdentifier -> 409
+    api_error.InvalidForm -> 400
+    api_error.InternalError -> 500
+    api_error.Unauthorized -> 401
+    api_error.InvalidCredentials -> 401
+    api_error.DuplicateIdentifier -> 409
   }
 }
 
 fn invalid_form(message: String) -> Response {
-  shared.ApiError(code: shared.InvalidForm, message: message)
+  ApiError(code: api_error.InvalidForm, message: message)
   |> api_error_response
 }
 
 fn internal_error() -> Response {
-  shared.ApiError(code: shared.InternalError, message: "Internal server error")
+  ApiError(code: api_error.InternalError, message: "Internal server error")
   |> api_error_response
 }
 
 fn unauthorized() -> Response {
-  shared.ApiError(code: shared.Unauthorized, message: "Not authenticated")
+  ApiError(code: api_error.Unauthorized, message: "Not authenticated")
   |> api_error_response
 }
 
 fn invalid_credentials() -> Response {
-  shared.ApiError(
-    code: shared.InvalidCredentials,
+  ApiError(
+    code: api_error.InvalidCredentials,
     message: "Username or password is incorrect",
   )
   |> api_error_response
 }
 
 fn duplicate_identifier(message: String) -> Response {
-  shared.ApiError(code: shared.DuplicateIdentifier, message: message)
+  ApiError(code: api_error.DuplicateIdentifier, message: message)
   |> api_error_response
 }
 
-fn api_error_response(api_error: shared.ApiError) -> Response {
+fn api_error_response(api_error: ApiError) -> Response {
   let status = api_error_code_status(api_error.code)
   api_error |> api_error_to_json |> json.to_string |> wisp.json_response(status)
 }
 
-fn api_error_to_json(api_error: shared.ApiError) -> Json {
+fn api_error_to_json(api_error: ApiError) -> Json {
   json.object([
     #(
       "error",
