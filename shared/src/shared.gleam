@@ -1,5 +1,5 @@
 pub type ApiErrorCode {
-  InvalidFormCode
+  InvalidForm
   InternalError
   Unauthorized
   InvalidCredentials

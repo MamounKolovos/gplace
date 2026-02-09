@@ -206,7 +206,7 @@ fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
 
 fn api_error_code_to_json(code: shared.ApiErrorCode) -> Json {
   case code {
-    shared.InvalidFormCode -> "INVALID_FORM"
+    shared.InvalidForm -> "INVALID_FORM"
     shared.InternalError -> "INTERNAL_ERROR"
     shared.Unauthorized -> "UNAUTHORIZED"
     shared.InvalidCredentials -> "INVALID_CREDENTIALS"
@@ -217,7 +217,7 @@ fn api_error_code_to_json(code: shared.ApiErrorCode) -> Json {
 
 fn api_error_code_status(code: shared.ApiErrorCode) -> Int {
   case code {
-    shared.InvalidFormCode -> 400
+    shared.InvalidForm -> 400
     shared.InternalError -> 500
     shared.Unauthorized -> 401
     shared.InvalidCredentials -> 401
@@ -226,7 +226,7 @@ fn api_error_code_status(code: shared.ApiErrorCode) -> Int {
 }
 
 fn invalid_form(message: String) -> Response {
-  shared.ApiError(code: shared.InvalidFormCode, message: message)
+  shared.ApiError(code: shared.InvalidForm, message: message)
   |> api_error_response
 }
 

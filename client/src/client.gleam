@@ -292,7 +292,7 @@ fn api_error_decoder() -> decode.Decoder(shared.ApiError) {
 fn api_error_code_decoder() -> decode.Decoder(shared.ApiErrorCode) {
   use variant <- decode.then(decode.string)
   case variant {
-    "INVALID_FORM" -> decode.success(shared.InvalidFormCode)
+    "INVALID_FORM" -> decode.success(shared.InvalidForm)
     "INTERNAL_ERROR" -> decode.success(shared.InternalError)
     "UNAUTHORIZED" -> decode.success(shared.Unauthorized)
     "INVALID_CREDENTIALS" -> decode.success(shared.InvalidCredentials)
