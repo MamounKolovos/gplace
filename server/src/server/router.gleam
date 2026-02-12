@@ -63,7 +63,7 @@ fn me(request: wisp.Request, ctx: Context) -> wisp.Response {
     Ok(user) ->
       user |> user.to_json |> json.to_string |> wisp.json_response(200)
     Error(SessionParsingFailed) -> unauthorized()
-
+    Error(AuthError(auth.InvalidSession)) -> unauthorized()
     Error(_) -> internal_error()
   }
 }
