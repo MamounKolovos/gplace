@@ -30,8 +30,16 @@ pub type FormInput {
 }
 
 pub fn init() -> #(Model, Effect(Msg)) {
-  #(Model(form: signup_form(), error_text: None), effect.none())
+  #(Model(form: signup_form(), error_text: None), reset_form("signup-form"))
 }
+
+fn reset_form(id: String) -> Effect(Msg) {
+  use _, _ <- effect.after_paint()
+  do_reset_form(id)
+}
+
+@external(javascript, "../client_ffi.mjs", "resetForm")
+fn do_reset_form(id: String) -> Nil
 
 fn signup_form() -> Form(FormInput) {
   form.new({
@@ -158,6 +166,7 @@ fn signup_view(model: Model) -> Element(Msg) {
       auth_toggle_view(),
       html.form(
         [
+          attribute.id("signup-form"),
           // prevents default submission and collects field values
           event.on_submit(fn(fields) {
             model.form
