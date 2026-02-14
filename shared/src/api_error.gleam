@@ -3,7 +3,7 @@ import gleam/dynamic/decode
 pub type Code {
   InvalidForm
   InternalError
-  Unauthorized
+  Unauthenticated
   InvalidCredentials
   DuplicateIdentifier
 }
@@ -25,7 +25,7 @@ fn api_error_code_decoder() -> decode.Decoder(Code) {
   case variant {
     "INVALID_FORM" -> decode.success(InvalidForm)
     "INTERNAL_ERROR" -> decode.success(InternalError)
-    "UNAUTHORIZED" -> decode.success(Unauthorized)
+    "UNAUTHENTICATED" -> decode.success(Unauthenticated)
     "INVALID_CREDENTIALS" -> decode.success(InvalidCredentials)
     "DUPLICATE_IDENTIFIER" -> decode.success(DuplicateIdentifier)
     _ -> decode.failure(InternalError, "Code")

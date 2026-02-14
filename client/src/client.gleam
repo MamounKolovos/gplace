@@ -132,7 +132,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           router.push(router.Profile),
         )
         Error(network.ApiFailure(ApiError(
-          code: api_error.Unauthorized,
+          code: api_error.Unauthenticated,
           message: _,
         ))) -> #(
           Model(..model, session: session.logout()),

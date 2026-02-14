@@ -62,8 +62,8 @@ fn me(request: wisp.Request, ctx: Context) -> wisp.Response {
   case result {
     Ok(user) ->
       user |> user.to_json |> json.to_string |> wisp.json_response(200)
-    Error(SessionParsingFailed) -> unauthorized()
-    Error(AuthError(auth.InvalidSession)) -> unauthorized()
+    Error(SessionParsingFailed) -> unauthenticated()
+    Error(AuthError(auth.InvalidSession)) -> unauthenticated()
     Error(_) -> internal_error()
   }
 }
@@ -208,7 +208,7 @@ fn api_error_code_to_json(code: api_error.Code) -> Json {
   case code {
     api_error.InvalidForm -> "INVALID_FORM"
     api_error.InternalError -> "INTERNAL_ERROR"
-    api_error.Unauthorized -> "UNAUTHORIZED"
+    api_error.Unauthenticated -> "UNAUTHENTICATED"
     api_error.InvalidCredentials -> "INVALID_CREDENTIALS"
     api_error.DuplicateIdentifier -> "DUPLICATE_IDENTIFIER"
   }
@@ -219,7 +219,7 @@ fn api_error_code_status(code: api_error.Code) -> Int {
   case code {
     api_error.InvalidForm -> 400
     api_error.InternalError -> 500
-    api_error.Unauthorized -> 401
+    api_error.Unauthenticated -> 401
     api_error.InvalidCredentials -> 401
     api_error.DuplicateIdentifier -> 409
   }
@@ -235,8 +235,8 @@ fn internal_error() -> Response {
   |> api_error_response
 }
 
-fn unauthorized() -> Response {
-  ApiError(code: api_error.Unauthorized, message: "Not authenticated")
+fn unauthenticated() -> Response {
+  ApiError(code: api_error.Unauthenticated, message: "Not authenticated")
   |> api_error_response
 }
 
