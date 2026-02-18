@@ -1,4 +1,3 @@
-import api_error.{ApiError}
 import client/board.{type Board, Board}
 import client/network
 import client/session.{type Session}
@@ -7,6 +6,7 @@ import lustre/attribute
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
+import shared/api_error.{ApiError}
 
 pub type Model {
   Model(state: State)

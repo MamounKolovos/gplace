@@ -1,4 +1,3 @@
-import api_error.{type ApiError, ApiError}
 import argus
 import formal/form.{type Form}
 import gleam/bit_array
@@ -17,6 +16,7 @@ import server/auth
 import server/sql
 import server/user
 import server/web.{type Context}
+import shared/api_error.{type ApiError, ApiError}
 import wisp.{type Request, type Response}
 import youid/uuid
 

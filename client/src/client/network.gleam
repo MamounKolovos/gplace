@@ -1,7 +1,7 @@
-import api_error.{type ApiError}
 import gleam/dynamic/decode
 import gleam/json
 import rsvp
+import shared/api_error.{type ApiError}
 
 pub type Error {
   ApiFailure(ApiError)

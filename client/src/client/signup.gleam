@@ -1,4 +1,3 @@
-import api_error.{ApiError}
 import client/network
 import client/router
 import client/session.{type Session}
@@ -15,6 +14,7 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
 import rsvp
+import shared/api_error.{ApiError}
 
 pub type Model {
   Model(form: Form(FormInput), error_text: Option(String))

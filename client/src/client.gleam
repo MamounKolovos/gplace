@@ -1,4 +1,3 @@
-import api_error.{ApiError}
 import client/login
 import client/network
 import client/play
@@ -13,6 +12,7 @@ import lustre/element.{type Element}
 import lustre/element/html
 import modem
 import rsvp
+import shared/api_error.{ApiError}
 
 pub fn main() -> Nil {
   let app = lustre.application(init, update, view)
