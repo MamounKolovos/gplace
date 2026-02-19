@@ -57,7 +57,7 @@ fn snapshot_to_json(snapshot: Snapshot) -> Json {
 
 fn board(request: wisp.Request, ctx: Context) -> wisp.Response {
   let color_indexes =
-    list.range(0, 999_999)
+    int.range(0, 999_999, with: [], run: list.prepend)
     |> list.map(fn(_) { int.random(16) })
     |> list.fold(from: <<>>, with: fn(acc, n) { <<acc:bits, n:4>> })
   let width = 1000
