@@ -143,7 +143,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     }
     Model(session: session.Pending(on_success:, on_error:), route: _, page: _),
       SessionValidated(result)
-    -> {
+    ->
       case result {
         Ok(user) -> #(
           Model(..model, session: session.login(user)),
@@ -154,7 +154,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           route.push(on_error),
         )
       }
-    }
+
     // guests don't need to be re-routed, just get their session updated passively
     Model(session: session.Unknown, route: _, page: _), SessionValidated(result)
     ->
