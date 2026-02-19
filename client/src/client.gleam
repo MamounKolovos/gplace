@@ -6,6 +6,7 @@ import client/route/play
 import client/route/profile
 import client/route/signup
 import client/session.{type Session}
+import gleam/bool
 import lustre
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
@@ -90,6 +91,8 @@ fn load_route(route: Route) -> #(Page, Effect(Msg)) {
 fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   case model, msg {
     model, UserNavigatedTo(route) -> {
+      use <- bool.guard(model.route == route, return: #(model, effect.none()))
+
       let is_protected = route.is_protected(route)
       let route = case model.session, route {
         session.LoggedOut, _ if is_protected -> route.Login
