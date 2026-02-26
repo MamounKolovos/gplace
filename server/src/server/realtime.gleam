@@ -28,8 +28,8 @@ pub fn websocket_handler(
 
 /// messages sent to Broker
 pub opaque type BrokerMessage {
-  ClientConnected
-  ClientDisconnected
+  ClientJoined
+  ClientLeft
 }
 
 pub fn broker_config(
@@ -49,7 +49,7 @@ fn handle_broker_message(
   registry: GroupRegistry(WebsocketMessage),
 ) -> actor.Next(Nil, BrokerMessage) {
   case message {
-    ClientConnected -> {
+    ClientJoined -> {
       let clients = group_registry.members(registry, "board")
       let user_count = list.length(clients)
 
@@ -60,7 +60,7 @@ fn handle_broker_message(
 
       actor.continue(state)
     }
-    ClientDisconnected -> {
+    ClientLeft -> {
       let clients = group_registry.members(registry, "board")
       let user_count = list.length(clients)
 
@@ -125,13 +125,13 @@ fn init_websocket(
   registry: GroupRegistry(WebsocketMessage),
 ) -> #(WebsocketState, process.Subject(WebsocketMessage)) {
   let client = group_registry.join(registry, "board", process.self())
-  process.send(broker, ClientConnected)
+  process.send(broker, ClientJoined)
   #(WebsocketState(broker:, registry:), client)
 }
 
 fn close_websocket(state: WebsocketState) -> Nil {
   echo "connection severed!"
   group_registry.leave(state.registry, "board", [process.self()])
-  process.send(state.broker, ClientDisconnected)
+  process.send(state.broker, ClientLeft)
   Nil
 }
