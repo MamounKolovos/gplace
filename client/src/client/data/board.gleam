@@ -1,20 +1,35 @@
 import client/network
 import gleam/bit_array
 import gleam/dynamic/decode
+import gleam/option.{type Option, None, Some}
 import lustre/effect.{type Effect}
 import rsvp
 
 pub type Board {
-  Board(canvas: Canvas, ctx: Context, snapshot: Snapshot)
+  Board(color_indexes: BitArray, width: Int, height: Int)
 }
 
-pub fn draw_board(board: Board) -> Effect(msg) {
-  use _ <- effect.from()
+pub fn draw_board(
+  board: Board,
+  ctx: Option(Context),
+  to_msg: fn(Canvas, Context) -> msg,
+) -> Effect(msg) {
+  use dispatch, _ <- effect.after_paint()
 
-  let Snapshot(color_indexes:, width:, height:) = board.snapshot
-  do_draw_board(board.ctx, color_indexes, width, height)
+  let ctx = case ctx {
+    Some(ctx) -> ctx
+    None -> {
+      let #(canvas, ctx) = do_load_canvas_and_context("base-canvas")
+      to_msg(canvas, ctx) |> dispatch
+      ctx
+    }
+  }
+
+  do_draw_board(ctx, board.color_indexes, board.width, board.height)
 }
 
+/// passing in primitives instead of the board type directly is easier
+/// since i dont have to deal with the custom type in js
 @external(javascript, "./board_ffi.mjs", "drawBoard")
 fn do_draw_board(
   ctx: Context,
@@ -28,16 +43,6 @@ pub type Canvas
 
 /// FFI reference to `CanvasRenderingContext2D`
 pub type Context
-
-pub fn load_canvas_and_context(
-  canvas_id: String,
-  to_msg: fn(Canvas, Context) -> msg,
-) -> Effect(msg) {
-  use dispatch, _ <- effect.after_paint()
-
-  let #(canvas, ctx) = do_load_canvas_and_context(canvas_id)
-  to_msg(canvas, ctx) |> dispatch
-}
 
 @external(javascript, "./board_ffi.mjs", "getCanvasAndContext")
 fn do_load_canvas_and_context(canvas_id: String) -> #(Canvas, Context)

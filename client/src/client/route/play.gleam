@@ -1,6 +1,8 @@
 import client/data/board.{type Board, Board}
+import client/data/websocket.{type WebSocket}
 import client/network
 import client/session.{type Session}
+import gleam/int
 import gleam/option.{type Option, None, Some}
 import lustre/attribute
 import lustre/effect.{type Effect}
@@ -9,24 +11,57 @@ import lustre/element/html
 import shared/api_error.{ApiError}
 
 pub type Model {
-  Model(state: State)
+  Model(
+    board_state: BoardState,
+    socket_state: SocketState,
+    canvas_state: CanvasState,
+    presence_state: PresenceState,
+  )
 }
 
-pub type State {
-  WaitingForSnapshot(error_text: Option(String))
-  WaitingForCanvasHandle(snapshot: board.Snapshot)
-  Ready(board: Board)
+pub type BoardState {
+  Loading
+  Loaded(board: Board)
+  Failed(error_text: String)
+}
+
+pub type SocketState {
+  Connecting
+  Connected(socket: WebSocket)
+  //TODO: failed
+}
+
+pub type CanvasState {
+  Unmounted
+  Mounted(ctx: board.Context)
+}
+
+pub type PresenceState {
+  Unknown
+  Known(user_count: Int)
 }
 
 pub type Msg {
   DomReturnedCanvas(canvas: board.Canvas, ctx: board.Context)
   ApiReturnedSnapshot(Result(board.Snapshot, network.Error))
+  WebSocketEvent(websocket.Event)
 }
 
 pub fn init() -> #(Model, Effect(Msg)) {
+  let effect =
+    effect.batch([
+      board.fetch_snapshot(ApiReturnedSnapshot),
+      websocket.init("ws://localhost:8000/api/ws", WebSocketEvent),
+    ])
+
   #(
-    Model(state: WaitingForSnapshot(error_text: None)),
-    board.fetch_snapshot(ApiReturnedSnapshot),
+    Model(
+      board_state: Loading,
+      socket_state: Connecting,
+      canvas_state: Unmounted,
+      presence_state: Unknown,
+    ),
+    effect,
   )
 }
 
@@ -35,56 +70,67 @@ pub fn update(
   model: Model,
   msg: Msg,
 ) -> #(Session, Model, Effect(Msg)) {
+  echo msg
   case model, msg {
-    Model(state: WaitingForSnapshot(_)), ApiReturnedSnapshot(result) ->
+    Model(board_state: Loading, ..), ApiReturnedSnapshot(result) ->
       case result {
-        Ok(snapshot) -> #(
-          session,
-          Model(state: WaitingForCanvasHandle(snapshot:)),
-          board.load_canvas_and_context("base-canvas", DomReturnedCanvas),
-        )
+        Ok(board.Snapshot(color_indexes:, width:, height:)) -> {
+          let board = Board(color_indexes:, width:, height:)
+          #(
+            session,
+            Model(..model, board_state: Loaded(board:)),
+            board.draw_board(board, None, DomReturnedCanvas),
+          )
+        }
         Error(error) -> #(
           session,
           Model(
-            state: WaitingForSnapshot(error_text: Some(
-              "board could not be loaded :(",
-            )),
+            ..model,
+            board_state: Failed(error_text: "board could not be loaded :("),
           ),
           effect.none(),
         )
       }
-    Model(state: WaitingForCanvasHandle(snapshot:)),
-      DomReturnedCanvas(canvas:, ctx:)
+    Model(canvas_state: Unmounted, ..), DomReturnedCanvas(canvas: _, ctx:) -> {
+      #(session, Model(..model, canvas_state: Mounted(ctx:)), effect.none())
+    }
+    Model(socket_state: Connecting, ..),
+      WebSocketEvent(websocket.Opened(socket))
     -> {
-      let board = Board(canvas:, ctx:, snapshot:)
-      #(session, Model(state: Ready(board:)), board.draw_board(board))
+      #(
+        session,
+        Model(..model, socket_state: Connected(socket:)),
+        effect.none(),
+      )
+    }
+
+    // TODO: actually decode messages into json
+    model, WebSocketEvent(websocket.ReceivedMessage(message)) -> {
+      let assert Ok(user_count) = int.parse(message)
+      let model = Model(..model, presence_state: Known(user_count:))
+      #(session, model, effect.none())
     }
     _, _ -> #(session, model, effect.none())
   }
 }
 
 pub fn view(model: Model) -> Element(Msg) {
-  case model.state {
-    WaitingForSnapshot(error_text:) ->
-      case error_text {
-        Some(error_text) -> html.text(error_text)
-        None -> html.text("waiting...")
-      }
-    WaitingForCanvasHandle(snapshot:) ->
-      html.div([attribute.style("image-rendering", "pixelated")], [
-        html.canvas([
-          attribute.id("base-canvas"),
-          attribute.width(snapshot.width),
-          attribute.height(snapshot.height),
+  case model.board_state {
+    Loading -> html.text("waiting...")
+    Loaded(board:) ->
+      html.div([], [
+        html.text(case model.presence_state {
+          Known(user_count:) -> "live user count: " <> int.to_string(user_count)
+          Unknown -> "..."
+        }),
+        html.div([attribute.style("image-rendering", "pixelated")], [
+          html.canvas([
+            attribute.id("base-canvas"),
+            attribute.width(board.width),
+            attribute.height(board.height),
+          ]),
         ]),
       ])
-    Ready(board:) ->
-      html.div([attribute.style("image-rendering", "pixelated")], [
-        html.canvas([
-          attribute.id("base-canvas"),
-          attribute.width(board.snapshot.width),
-          attribute.height(board.snapshot.height),
-        ]),
-      ])
+    Failed(error_text:) -> html.text(error_text)
   }
 }
