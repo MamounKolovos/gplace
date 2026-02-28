@@ -9,6 +9,27 @@ pub type Board {
   Board(color_indexes: BitArray, width: Int, height: Int)
 }
 
+pub fn init_board(
+  board: Board,
+  canvas: Option(Canvas),
+  ctx: Option(Context),
+  to_msg: fn(Canvas, Context) -> msg,
+) -> Effect(msg) {
+  use dispatch, _ <- effect.after_paint
+
+  let #(canvas, ctx) = case canvas, ctx {
+    Some(canvas), Some(ctx) -> #(canvas, ctx)
+    _, _ -> {
+      let #(canvas, ctx) = do_load_canvas_and_context("base-canvas")
+      to_msg(canvas, ctx) |> dispatch
+      #(canvas, ctx)
+    }
+  }
+
+  do_set_dimensions(canvas, board.width, board.height)
+  do_draw_board(ctx, board.color_indexes, board.width, board.height)
+}
+
 pub fn draw_board(
   board: Board,
   ctx: Option(Context),
@@ -37,6 +58,9 @@ fn do_draw_board(
   width: Int,
   height: Int,
 ) -> Nil
+
+@external(javascript, "./board_ffi.mjs", "setDimensions")
+fn do_set_dimensions(canvas: Canvas, width: Int, height: Int) -> Nil
 
 /// FFI reference to `HTMLCanvasElement`
 pub type Canvas
