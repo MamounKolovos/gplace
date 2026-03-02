@@ -270,9 +270,36 @@ pub fn view(model: Model) -> Element(Msg) {
   case model.board_state {
     Loading -> html.text("waiting...")
     Loaded(camera_position:, camera_log_zoom:, pan_state:, ..) ->
-      canvas_view(camera_position, camera_log_zoom, pan_state)
+      html.div([], [
+        hud_view(model.presence_state),
+        canvas_view(camera_position, camera_log_zoom, pan_state),
+      ])
     Failed(error_text:) -> html.text(error_text)
   }
+}
+
+fn hud_view(presence_state: PresenceState) -> Element(Msg) {
+  html.div([], [
+    case presence_state {
+      Known(user_count:) -> user_count_view(user_count)
+      Unknown -> element.none()
+    },
+  ])
+}
+
+fn user_count_view(user_count: Int) -> Element(Msg) {
+  html.div(
+    [
+      attribute.class(
+        "fixed top-4 left-1/2 -translate-x-1/2 z-50
+            rounded-full
+            bg-white/90 text-black 
+            px-3 py-1.5
+            ",
+      ),
+    ],
+    [html.text("live user count: " <> int.to_string(user_count))],
+  )
 }
 
 fn canvas_view(
@@ -285,11 +312,6 @@ fn canvas_view(
       attribute.class("w-screen h-screen overflow-hidden"),
     ],
     [
-      // case model.presence_state {
-      //   Known(user_count:) ->
-      //     html.text("live user count: " <> int.to_string(user_count))
-      //   Unknown -> element.none()
-      // },
       html.div(
         [
           attribute.style("image-rendering", "pixelated"),
