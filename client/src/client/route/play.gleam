@@ -63,12 +63,7 @@ pub type Msg {
   DomReturnedCanvas(canvas: board.Canvas, ctx: board.Context)
   ApiReturnedSnapshot(Result(board.Snapshot, network.Error))
   WebSocketEvent(websocket.Event)
-  Pan(PanMsg)
   WheelChanged(pointer.WheelEvent)
-  PointerMoved1(pointer.MotionEvent)
-}
-
-pub type PanMsg {
   SpaceChanged(is_down: Bool)
   PrimaryPointerPressedDown(pointer.ButtonEvent)
   PrimaryPointerReleased(pointer.ButtonEvent)
@@ -139,23 +134,19 @@ pub fn update(
       }
     Model(canvas_state: Unavailable, ..), DomReturnedCanvas(canvas:, ctx:) -> {
       let navigation_effects = [
-        keyboard.lifecycle(keyboard.Space, SpaceChanged) |> effect.map(Pan),
-        pointer.listen_motion(pointer.PointerMove, PointerMoved)
-          |> effect.map(Pan),
+        keyboard.lifecycle(keyboard.Space, SpaceChanged),
+        pointer.listen_motion(pointer.PointerMove, PointerMoved),
         pointer.listen_button(
           pointer.PointerDown,
           button: pointer.Primary,
           to_msg: PrimaryPointerPressedDown,
-        )
-          |> effect.map(Pan),
+        ),
         pointer.listen_button(
           pointer.PointerUp,
           button: pointer.Primary,
           to_msg: PrimaryPointerReleased,
-        )
-          |> effect.map(Pan),
+        ),
         pointer.listen_wheel(WheelChanged),
-        pointer.listen_motion(pointer.PointerMove, PointerMoved1),
       ]
       #(
         session,
@@ -173,18 +164,50 @@ pub fn update(
       )
     }
 
-    Model(board_state:, ..), Pan(msg) -> {
-      let board_state = update_board_pan(board_state, msg)
-      #(session, Model(..model, board_state:), effect.none())
+    Model(board_state: Loaded(..) as board_state, ..), SpaceChanged(is_down:) -> {
+      let pan_state = case is_down {
+        True -> PanPrimed
+        False -> Idle
+      }
+      let board_state = Loaded(..board_state, pan_state:)
+      let model = Model(..model, board_state:)
+      #(session, model, effect.none())
     }
 
-    Model(board_state: Loaded(..) as board_state, ..), PointerMoved1(event) -> {
+    Model(
+      board_state: Loaded(pan_state: PanPrimed, camera_position:, ..) as board_state,
+      ..,
+    ),
+      PrimaryPointerPressedDown(event)
+    -> {
+      let pan_origin = Vec2(event.client_x, event.client_y)
+      let pan_state = Panning(pan_origin:, camera_origin: camera_position)
+      let board_state = Loaded(..board_state, pan_state:)
+      let model = Model(..model, board_state:)
+      #(session, model, effect.none())
+    }
+
+    Model(board_state: Loaded(pan_state: Panning(..), ..) as board_state, ..),
+      PrimaryPointerReleased(_)
+    -> {
+      let board_state = Loaded(..board_state, pan_state: PanPrimed)
+      let model = Model(..model, board_state:)
+      #(session, model, effect.none())
+    }
+
+    Model(board_state: Loaded(..) as board_state, ..), PointerMoved(event) -> {
       let pointer_position = Vec2(event.client_x, event.client_y)
-      #(
-        session,
-        Model(..model, board_state: Loaded(..board_state, pointer_position:)),
-        effect.none(),
-      )
+      let board_state = case board_state.pan_state {
+        Panning(pan_origin:, camera_origin:) -> {
+          let delta = vec2.sub(pointer_position, pan_origin)
+          let camera_position = vec2.sub(camera_origin, delta)
+
+          Loaded(..board_state, pointer_position:, camera_position:)
+        }
+        _ -> Loaded(..board_state, pointer_position:)
+      }
+      let model = Model(..model, board_state:)
+      #(session, model, effect.none())
     }
 
     Model(
@@ -223,18 +246,14 @@ pub fn update(
           vec2.mul(pointer_position, zoom_ratio -. 1.0),
         )
 
-      #(
-        session,
-        Model(
-          ..model,
-          board_state: Loaded(
-            ..board_state,
-            camera_log_zoom: new_camera_log_zoom,
-            camera_position: new_camera_position,
-          ),
-        ),
-        effect.none(),
-      )
+      let board_state =
+        Loaded(
+          ..board_state,
+          camera_log_zoom: new_camera_log_zoom,
+          camera_position: new_camera_position,
+        )
+      let model = Model(..model, board_state:)
+      #(session, model, effect.none())
     }
 
     // TODO: actually decode messages into json
@@ -244,37 +263,6 @@ pub fn update(
       #(session, model, effect.none())
     }
     _, _ -> #(session, model, effect.none())
-  }
-}
-
-fn update_board_pan(state: BoardState, msg: PanMsg) -> BoardState {
-  case state, msg {
-    Loaded(..), SpaceChanged(is_down:) ->
-      Loaded(..state, pan_state: case is_down {
-        True -> PanPrimed
-        False -> Idle
-      })
-    Loaded(pan_state: PanPrimed, camera_position:, ..),
-      PrimaryPointerPressedDown(event)
-    ->
-      Loaded(
-        ..state,
-        pan_state: Panning(
-          pan_origin: Vec2(event.client_x, event.client_y),
-          camera_origin: camera_position,
-        ),
-      )
-    Loaded(pan_state: Panning(pan_origin:, camera_origin:), ..),
-      PointerMoved(event)
-    -> {
-      let current_position = Vec2(event.client_x, event.client_y)
-      let delta = vec2.sub(current_position, pan_origin)
-      let camera_position = vec2.sub(camera_origin, delta)
-      Loaded(..state, camera_position:)
-    }
-    Loaded(pan_state: Panning(..), ..), PrimaryPointerReleased(_) ->
-      Loaded(..state, pan_state: PanPrimed)
-    state, _ -> state
   }
 }
 
