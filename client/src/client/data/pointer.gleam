@@ -109,6 +109,26 @@ fn button_decoder() -> Decoder(Button) {
   }
 }
 
+pub type WheelEvent {
+  WheelEvent(delta_x: Float, delta_y: Float)
+}
+
+fn wheel_event_decoder() -> Decoder(WheelEvent) {
+  use delta_x <- decode.field("deltaX", decode.float)
+  use delta_y <- decode.field("deltaY", decode.float)
+  decode.success(WheelEvent(delta_x:, delta_y:))
+}
+
+pub fn listen_wheel(to_msg to_msg: fn(WheelEvent) -> msg) -> Effect(msg) {
+  use dispatch <- effect.from
+
+  use event <- do_listen("wheel")
+  case decode.run(event, wheel_event_decoder()) {
+    Ok(event) -> event |> to_msg |> dispatch
+    _ -> Nil
+  }
+}
+
 pub fn listen_button(
   type_ type_: ButtonEventType,
   button button: Button,
