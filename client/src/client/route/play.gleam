@@ -269,17 +269,34 @@ pub fn update(
 pub fn view(model: Model) -> Element(Msg) {
   case model.board_state {
     Loading -> html.text("waiting...")
-    Loaded(camera_position:, camera_log_zoom:, pan_state:, ..) ->
+    Loaded(
+      camera_position:,
+      camera_log_zoom:,
+      pointer_position:,
+      pan_state:,
+      ..,
+    ) ->
       html.div([], [
-        hud_view(model.presence_state),
+        hud_view(
+          camera_position,
+          camera_log_zoom,
+          pointer_position,
+          model.presence_state,
+        ),
         canvas_view(camera_position, camera_log_zoom, pan_state),
       ])
     Failed(error_text:) -> html.text(error_text)
   }
 }
 
-fn hud_view(presence_state: PresenceState) -> Element(Msg) {
+fn hud_view(
+  camera_position: Vec2,
+  camera_log_zoom: Float,
+  pointer_position: Vec2,
+  presence_state: PresenceState,
+) -> Element(Msg) {
   html.div([], [
+    pointer_world_view(camera_position, camera_log_zoom, pointer_position),
     case presence_state {
       Known(user_count:) -> user_count_view(user_count)
       Unknown -> element.none()
@@ -287,11 +304,47 @@ fn hud_view(presence_state: PresenceState) -> Element(Msg) {
   ])
 }
 
+fn pointer_world_view(
+  camera_position: Vec2,
+  camera_log_zoom: Float,
+  pointer_position: Vec2,
+) -> Element(Msg) {
+  let zoom = float.exponential(camera_log_zoom)
+  let pointer_world =
+    vec2.add(camera_position, pointer_position) |> vec2.div(zoom)
+
+  let clamped =
+    vec2.clamp(pointer_world, min: Vec2(0.0, 0.0), max: Vec2(999.0, 999.0))
+
+  html.div(
+    [
+      attribute.class(
+        "
+        fixed top-4 left-1/2 -translate-x-1/2 z-50
+        rounded-full
+        bg-white/90 text-black
+        px-3 py-1.5
+        ",
+      ),
+    ],
+    [
+      html.text(
+        "("
+        <> clamped.x |> float.truncate |> int.to_string
+        <> ", "
+        <> clamped.y |> float.truncate |> int.to_string
+        <> ")",
+      ),
+    ],
+  )
+}
+
 fn user_count_view(user_count: Int) -> Element(Msg) {
   html.div(
     [
       attribute.class(
-        "fixed top-4 left-1/2 -translate-x-1/2 z-50
+        // "fixed top-4 left-1/2 -translate-x-1/2 z-50
+        "fixed top-4 right-4 z-50
             rounded-full
             bg-white/90 text-black 
             px-3 py-1.5
