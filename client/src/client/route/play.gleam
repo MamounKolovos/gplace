@@ -1,4 +1,5 @@
 import client/data/board.{type Board, Board}
+import client/data/camera.{type Camera}
 import client/data/keyboard
 import client/data/pointer
 import client/data/vec2.{type Vec2, Vec2}
@@ -26,11 +27,8 @@ pub type BoardState {
   Loading
   Loaded(
     board: Board,
+    camera: Camera,
     pan_state: PanState,
-    camera_position: Vec2,
-    /// store in log space since wheel deltas are additive and need to be applied multiplicatively
-    /// gives us smooth exponential scaling
-    camera_log_zoom: Float,
     pointer_position: Vec2,
   )
   Failed(error_text: String)
@@ -104,9 +102,8 @@ pub fn update(
               ..model,
               board_state: Loaded(
                 board:,
+                camera: camera.new(),
                 pan_state: Idle,
-                camera_position: Vec2(0.0, 0.0),
-                camera_log_zoom: 0.0,
                 pointer_position: Vec2(0.0, 0.0),
               ),
             ),
@@ -175,13 +172,14 @@ pub fn update(
     }
 
     Model(
-      board_state: Loaded(pan_state: PanPrimed, camera_position:, ..) as board_state,
+      board_state: Loaded(camera:, pan_state: PanPrimed, ..) as board_state,
       ..,
     ),
       PrimaryPointerPressedDown(event)
     -> {
       let pan_origin = Vec2(event.client_x, event.client_y)
-      let pan_state = Panning(pan_origin:, camera_origin: camera_position)
+      let pan_state =
+        Panning(pan_origin:, camera_origin: camera.position(camera))
       let board_state = Loaded(..board_state, pan_state:)
       let model = Model(..model, board_state:)
       #(session, model, effect.none())
@@ -195,14 +193,17 @@ pub fn update(
       #(session, model, effect.none())
     }
 
-    Model(board_state: Loaded(..) as board_state, ..), PointerMoved(event) -> {
+    Model(board_state: Loaded(camera:, ..) as board_state, ..),
+      PointerMoved(event)
+    -> {
       let pointer_position = Vec2(event.client_x, event.client_y)
       let board_state = case board_state.pan_state {
         Panning(pan_origin:, camera_origin:) -> {
           let delta = vec2.sub(pointer_position, pan_origin)
           let camera_position = vec2.sub(camera_origin, delta)
+          let camera = camera.move_to(camera, camera_position)
 
-          Loaded(..board_state, pointer_position:, camera_position:)
+          Loaded(..board_state, pointer_position:, camera:)
         }
         _ -> Loaded(..board_state, pointer_position:)
       }
@@ -211,47 +212,19 @@ pub fn update(
     }
 
     Model(
-      board_state: Loaded(
-        camera_log_zoom:,
-        camera_position:,
-        pointer_position:,
-        ..,
-      ) as board_state,
+      board_state: Loaded(camera:, pointer_position:, ..) as board_state,
       ..,
     ),
       WheelChanged(event)
     -> {
-      let new_camera_log_zoom =
-        float.clamp(
-          camera_log_zoom +. { event.delta_y *. 0.003 },
-          // ln(1)
-          min: 0.0,
-          // ln(100)
-          max: 4.60517,
+      let camera =
+        camera.zoom_by(
+          camera,
+          delta: event.delta_y *. 0.003,
+          target: pointer_position,
         )
 
-      // transform back from log space since the ratio is calculated in normal space
-      let old_zoom = float.exponential(camera_log_zoom)
-      let new_zoom = float.exponential(new_camera_log_zoom)
-
-      let zoom_ratio = new_zoom /. old_zoom
-
-      // anchor point by default is (0, 0)
-      // this is the formula to make the pointer the anchor point instead
-      // camera * r pulls the camera towards (0, 0)
-      // pointer * (r - 1) pushes the camera towards the pointer
-      let new_camera_position =
-        vec2.add(
-          vec2.mul(camera_position, zoom_ratio),
-          vec2.mul(pointer_position, zoom_ratio -. 1.0),
-        )
-
-      let board_state =
-        Loaded(
-          ..board_state,
-          camera_log_zoom: new_camera_log_zoom,
-          camera_position: new_camera_position,
-        )
+      let board_state = Loaded(..board_state, camera:)
       let model = Model(..model, board_state:)
       #(session, model, effect.none())
     }
@@ -269,34 +242,22 @@ pub fn update(
 pub fn view(model: Model) -> Element(Msg) {
   case model.board_state {
     Loading -> html.text("waiting...")
-    Loaded(
-      camera_position:,
-      camera_log_zoom:,
-      pointer_position:,
-      pan_state:,
-      ..,
-    ) ->
+    Loaded(camera:, pointer_position:, pan_state:, ..) ->
       html.div([], [
-        hud_view(
-          camera_position,
-          camera_log_zoom,
-          pointer_position,
-          model.presence_state,
-        ),
-        canvas_view(camera_position, camera_log_zoom, pan_state),
+        hud_view(camera, pointer_position, model.presence_state),
+        canvas_view(camera, pan_state),
       ])
     Failed(error_text:) -> html.text(error_text)
   }
 }
 
 fn hud_view(
-  camera_position: Vec2,
-  camera_log_zoom: Float,
+  camera: Camera,
   pointer_position: Vec2,
   presence_state: PresenceState,
 ) -> Element(Msg) {
   html.div([], [
-    pointer_world_view(camera_position, camera_log_zoom, pointer_position),
+    pointer_world_view(camera, pointer_position),
     case presence_state {
       Known(user_count:) -> user_count_view(user_count)
       Unknown -> element.none()
@@ -304,17 +265,18 @@ fn hud_view(
   ])
 }
 
-fn pointer_world_view(
-  camera_position: Vec2,
-  camera_log_zoom: Float,
-  pointer_position: Vec2,
-) -> Element(Msg) {
-  let zoom = float.exponential(camera_log_zoom)
-  let pointer_world =
-    vec2.add(camera_position, pointer_position) |> vec2.div(zoom)
+fn pointer_world_view(camera: Camera, pointer_position: Vec2) -> Element(Msg) {
+  let pointer_world = camera.screen_to_world(camera, pointer_position)
 
-  let clamped =
-    vec2.clamp(pointer_world, min: Vec2(0.0, 0.0), max: Vec2(999.0, 999.0))
+  // TODO: _string suffix necessary because of compiler bug
+  // fixed on main so be sure to remove once new compiler version is out
+  let #(x_string, y_string) = case pointer_world {
+    Vec2(x:, y:) if x >=. 0.0 && x <. 1000.0 && y >=. 0.0 && y <. 1000.0 -> #(
+      x |> float.truncate |> int.to_string,
+      y |> float.truncate |> int.to_string,
+    )
+    _ -> #("-", "-")
+  }
 
   html.div(
     [
@@ -328,13 +290,7 @@ fn pointer_world_view(
       ),
     ],
     [
-      html.text(
-        "("
-        <> clamped.x |> float.truncate |> int.to_string
-        <> ", "
-        <> clamped.y |> float.truncate |> int.to_string
-        <> ")",
-      ),
+      html.text("(" <> x_string <> ", " <> y_string <> ")"),
     ],
   )
 }
@@ -355,11 +311,7 @@ fn user_count_view(user_count: Int) -> Element(Msg) {
   )
 }
 
-fn canvas_view(
-  camera_position: Vec2,
-  camera_log_zoom: Float,
-  pan_state: PanState,
-) -> Element(Msg) {
+fn canvas_view(camera: Camera, pan_state: PanState) -> Element(Msg) {
   html.div(
     [
       attribute.class("w-screen h-screen overflow-hidden"),
@@ -371,18 +323,18 @@ fn canvas_view(
           attribute.style("transform-origin", "0 0"),
           attribute.style(
             "transform",
-            css_translate(vec2.neg(camera_position))
-              <> css_scale(float.exponential(camera_log_zoom)),
+            css_translate(vec2.neg(camera.position(camera)))
+              <> css_scale(camera.zoom(camera)),
           ),
-          case pan_state {
-            Idle -> attribute.none()
-            PanPrimed -> attribute.class("cursor-grab")
-            Panning(..) -> attribute.class("cursor-grabbing")
-          },
         ],
         [
           html.canvas([
             attribute.id("base-canvas"),
+            case pan_state {
+              Idle -> attribute.none()
+              PanPrimed -> attribute.class("cursor-grab")
+              Panning(..) -> attribute.class("cursor-grabbing")
+            },
           ]),
         ],
       ),
