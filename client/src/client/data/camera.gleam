@@ -28,13 +28,8 @@ pub fn zoom(camera: Camera) -> Float {
   float.exponential(camera.log_zoom)
 }
 
-pub fn move_to(camera: Camera, position: Vec2) -> Camera {
-  let position =
-    vec2.clamp(
-      position,
-      min: Vec2(-1.0 *. 1250.0, -1.0 *. 1250.0),
-      max: Vec2(1250.0 *. zoom(camera), 1250.0 *. zoom(camera)),
-    )
+pub fn pan(camera: Camera, screen_delta delta: Vec2) -> Camera {
+  let position = from_screen(camera, delta)
   Camera(..camera, position:)
 }
 
@@ -50,26 +45,25 @@ pub fn zoom_by(
   let new_log_zoom =
     float.clamp(camera.log_zoom +. delta, min: min_log_zoom, max: max_log_zoom)
 
-  // transform back from log space since the ratio is calculated in normal space
   let old_zoom = float.exponential(camera.log_zoom)
   let new_zoom = float.exponential(new_log_zoom)
 
-  let zoom_ratio = new_zoom /. old_zoom
+  let world_before =
+    vec2.add(camera.position, vec2.div(screen_target, old_zoom))
+  let world_after = vec2.add(camera.position, vec2.div(screen_target, new_zoom))
 
-  // anchor point by default is (0, 0)
-  // this is the formula to make the pointer the anchor point instead
-  // camera * r pulls the camera towards (0, 0)
-  // pointer * (r - 1) pushes the camera towards the pointer
   let new_position =
-    vec2.add(
-      vec2.mul(camera.position, zoom_ratio),
-      vec2.mul(screen_target, zoom_ratio -. 1.0),
-    )
+    vec2.add(camera.position, vec2.sub(world_before, world_after))
 
   Camera(position: new_position, log_zoom: new_log_zoom)
 }
 
-pub fn screen_to_world(camera: Camera, position: Vec2) -> Vec2 {
+pub fn from_screen(camera: Camera, position: Vec2) -> Vec2 {
   let zoom = zoom(camera)
-  vec2.add(camera.position, position) |> vec2.div(zoom)
+  vec2.add(camera.position, position |> vec2.div(zoom))
+}
+
+pub fn to_screen(camera: Camera) -> Vec2 {
+  let zoom = zoom(camera)
+  vec2.mul(camera.position, zoom)
 }

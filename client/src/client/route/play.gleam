@@ -48,7 +48,7 @@ pub type CanvasHandle {
 pub type PanState {
   Idle
   PanPrimed
-  Panning(pan_origin: Vec2, camera_origin: Vec2)
+  Panning(last_pointer_position: Vec2)
 }
 
 //TODO: have socket state own this
@@ -171,15 +171,11 @@ pub fn update(
       #(session, model, effect.none())
     }
 
-    Model(
-      board_state: Loaded(camera:, pan_state: PanPrimed, ..) as board_state,
-      ..,
-    ),
+    Model(board_state: Loaded(pan_state: PanPrimed, ..) as board_state, ..),
       PrimaryPointerPressedDown(event)
     -> {
-      let pan_origin = Vec2(event.client_x, event.client_y)
-      let pan_state =
-        Panning(pan_origin:, camera_origin: camera.position(camera))
+      let last_pointer_position = Vec2(event.client_x, event.client_y)
+      let pan_state = Panning(last_pointer_position:)
       let board_state = Loaded(..board_state, pan_state:)
       let model = Model(..model, board_state:)
       #(session, model, effect.none())
@@ -198,12 +194,12 @@ pub fn update(
     -> {
       let pointer_position = Vec2(event.client_x, event.client_y)
       let board_state = case board_state.pan_state {
-        Panning(pan_origin:, camera_origin:) -> {
-          let delta = vec2.sub(pointer_position, pan_origin)
-          let camera_position = vec2.sub(camera_origin, delta)
-          let camera = camera.move_to(camera, camera_position)
-
-          Loaded(..board_state, pointer_position:, camera:)
+        Panning(last_pointer_position:) -> {
+          // order reversed since camera moves opposite to pan direction
+          let delta = vec2.sub(last_pointer_position, pointer_position)
+          let camera = camera.pan(camera, delta)
+          let pan_state = Panning(last_pointer_position: pointer_position)
+          Loaded(..board_state, pan_state:, pointer_position:, camera:)
         }
         _ -> Loaded(..board_state, pointer_position:)
       }
@@ -266,7 +262,7 @@ fn hud_view(
 }
 
 fn pointer_world_view(camera: Camera, pointer_position: Vec2) -> Element(Msg) {
-  let pointer_world = camera.screen_to_world(camera, pointer_position)
+  let pointer_world = camera.from_screen(camera, pointer_position)
 
   // TODO: _string suffix necessary because of compiler bug
   // fixed on main so be sure to remove once new compiler version is out
@@ -323,7 +319,7 @@ fn canvas_view(camera: Camera, pan_state: PanState) -> Element(Msg) {
           attribute.style("transform-origin", "0 0"),
           attribute.style(
             "transform",
-            css_translate(vec2.neg(camera.position(camera)))
+            css_translate(camera.to_screen(camera) |> vec2.neg)
               <> css_scale(camera.zoom(camera)),
           ),
         ],
