@@ -4,6 +4,7 @@
 packages = [
   { name = "argus", version = "1.0.3", build_tools = ["gleam"], requirements = ["jargon"], otp_app = "argus", source = "hex", outer_checksum = "522A932BE147A78720A1AF95348544F604E900E788FF3D84DDF9F18DC7767819" },
   { name = "argv", version = "1.0.2", build_tools = ["gleam"], requirements = [], otp_app = "argv", source = "hex", outer_checksum = "BA1FF0929525DEBA1CE67256E5ADF77A7CDDFE729E3E3F57A5BDCAA031DED09D" },
+  { name = "atomic_array", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "atomic_array", source = "hex", outer_checksum = "2B5D25F975D6E9A222E62077AD8F5A30A932606BCBC6F2869C7961D19BD0D4CE" },
   { name = "backoff", version = "1.1.6", build_tools = ["rebar3"], requirements = [], otp_app = "backoff", source = "hex", outer_checksum = "CF0CFFF8995FB20562F822E5CC47D8CCF664C5ECDC26A684CBE85C225F9D7C39" },
   { name = "directories", version = "1.2.0", build_tools = ["gleam"], requirements = ["envoy", "gleam_stdlib", "platform", "simplifile"], otp_app = "directories", source = "hex", outer_checksum = "D13090CFCDF6759B87217E8DDD73A75903A700148A82C1D33799F333E249BF9E" },
   { name = "envoy", version = "1.1.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "envoy", source = "hex", outer_checksum = "850DA9D29D2E5987735872A2B5C81035146D7FE19EFC486129E44440D03FD832" },
@@ -57,6 +58,7 @@ packages = [
 
 [requirements]
 argus = { version = ">= 1.0.3 and < 2.0.0" }
+atomic_array = { version = ">= 1.0.0 and < 2.0.0" }
 envoy = { version = ">= 1.1.0 and < 2.0.0" }
 formal = { version = ">= 3.0.0 and < 4.0.0" }
 gleam_crypto = { version = ">= 1.5.1 and < 2.0.0" }

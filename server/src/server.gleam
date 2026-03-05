@@ -1,7 +1,10 @@
+import atomic_array.{type AtomicArray}
 import envoy
 import gleam/erlang/process
 import gleam/http/request
+import gleam/int
 import gleam/io
+import gleam/list
 import gleam/option.{None, Some}
 import gleam/otp/actor
 import gleam/otp/static_supervisor.{type Supervisor}
@@ -27,6 +30,21 @@ pub fn init() -> Result(actor.Started(Supervisor), actor.StartError) {
   let pog_config = pog_config()
   let ctx = Context(db: pog.named_connection(pog_config.pool_name))
 
+  // (1000 * 1000 * 4) / 64
+  let board = atomic_array.new_unsigned(62_500)
+
+  let _ =
+    int.range(0, 999_999, with: [], run: list.prepend)
+    |> list.map(fn(_) { int.random(16) })
+    |> list.sized_chunk(16)
+    |> list.index_map(fn(colors, i) {
+      let packed_colors =
+        list.index_fold(colors, from: 0, with: fn(acc, color, index) {
+          int.bitwise_or(acc, int.bitwise_shift_left(color, index * 4))
+        })
+      atomic_array.set(board, i, packed_colors)
+    })
+
   let registry_name = process.new_name("registry")
   let registry = group_registry.get_registry(registry_name)
 
@@ -37,7 +55,7 @@ pub fn init() -> Result(actor.Started(Supervisor), actor.StartError) {
   let db_spec = pog_config |> pog.supervised
   let registry_spec = registry_name |> group_registry.supervised
   let broker_spec = supervision.worker(fn() { actor.start(broker_config) })
-  let server_spec = mist_config(ctx, broker, registry) |> mist.supervised
+  let server_spec = mist_config(ctx, broker, registry, board) |> mist.supervised
 
   static_supervisor.new(static_supervisor.OneForOne)
   |> static_supervisor.add(db_spec)
@@ -51,14 +69,16 @@ fn mist_config(
   ctx: Context,
   broker: process.Subject(realtime.BrokerMessage),
   registry: GroupRegistry(realtime.WebsocketMessage),
+  board: AtomicArray,
 ) -> mist.Builder(mist.Connection, mist.ResponseData) {
   let assert Ok(secret_key_base) = envoy.get("SECRET_KEY_BASE")
 
   mist.new(fn(request) {
     case request.path_segments(request) {
-      ["api", "ws"] -> realtime.websocket_handler(request, broker, registry)
+      ["api", "ws"] ->
+        realtime.websocket_handler(request, broker, registry, board)
       _ -> {
-        let handler = router.handle_request(_, ctx)
+        let handler = router.handle_request(_, ctx, board)
         wisp_mist.handler(handler, secret_key_base)(request)
       }
     }

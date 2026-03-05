@@ -1,4 +1,5 @@
 import argus
+import atomic_array.{type AtomicArray}
 import formal/form.{type Form}
 import gleam/bit_array
 import gleam/crypto
@@ -28,13 +29,17 @@ type Error(f) {
   SessionParsingFailed
 }
 
-pub fn handle_request(request: Request, ctx: Context) -> Response {
+pub fn handle_request(
+  request: Request,
+  ctx: Context,
+  board: AtomicArray,
+) -> Response {
   use request <- web.middleware(request)
   case wisp.path_segments(request) {
     ["api", "signup"] -> signup(request, ctx)
     ["api", "login"] -> login(request, ctx)
     ["api", "me"] -> me(request, ctx)
-    ["api", "board"] -> board(request, ctx)
+    ["api", "board"] -> handle_board(request, ctx, board)
     _ -> wisp.not_found()
   }
 }
@@ -55,19 +60,21 @@ fn snapshot_to_json(snapshot: Snapshot) -> Json {
   ])
 }
 
-fn board(request: wisp.Request, ctx: Context) -> wisp.Response {
-  let color_indexes =
-    int.range(0, 999_999, with: [], run: list.prepend)
-    |> list.map(fn(_) { int.random(16) })
-    |> list.fold(from: <<>>, with: fn(acc, n) { <<acc:bits, n:4>> })
-  let width = 1000
-  let height = 1000
+fn handle_board(
+  request: wisp.Request,
+  ctx: Context,
+  board: AtomicArray,
+) -> wisp.Response {
+  let color_indexes = board_to_bit_array(board)
 
-  Snapshot(color_indexes:, width:, height:)
+  Snapshot(color_indexes:, width: 1000, height: 1000)
   |> snapshot_to_json
   |> json.to_string
   |> wisp.json_response(200)
 }
+
+@external(erlang, "board_ffi", "to_bit_array")
+fn board_to_bit_array(array: AtomicArray) -> BitArray
 
 fn me(request: wisp.Request, ctx: Context) -> wisp.Response {
   let result = {

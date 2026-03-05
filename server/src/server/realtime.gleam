@@ -1,3 +1,4 @@
+import atomic_array.{type AtomicArray}
 import gleam/erlang/process
 import gleam/http/request
 import gleam/http/response
@@ -13,12 +14,13 @@ pub fn websocket_handler(
   request: request.Request(mist.Connection),
   broker: process.Subject(BrokerMessage),
   registry: GroupRegistry(WebsocketMessage),
+  board: AtomicArray,
 ) -> response.Response(mist.ResponseData) {
   mist.websocket(
     request,
     handler: handle_websocket_message,
     on_init: fn(conn) {
-      let #(state, client) = init_websocket(conn, broker, registry)
+      let #(state, client) = init_websocket(conn, broker, registry, board)
       let selector = process.new_selector() |> process.select(client)
       #(state, Some(selector))
     },
@@ -93,6 +95,7 @@ type WebsocketState {
   WebsocketState(
     broker: process.Subject(BrokerMessage),
     registry: GroupRegistry(WebsocketMessage),
+    board: AtomicArray,
   )
 }
 
@@ -123,10 +126,11 @@ fn init_websocket(
   _conn: mist.WebsocketConnection,
   broker: process.Subject(BrokerMessage),
   registry: GroupRegistry(WebsocketMessage),
+  board: AtomicArray,
 ) -> #(WebsocketState, process.Subject(WebsocketMessage)) {
   let client = group_registry.join(registry, "board", process.self())
   process.send(broker, ClientJoined)
-  #(WebsocketState(broker:, registry:), client)
+  #(WebsocketState(broker:, registry:, board:), client)
 }
 
 fn close_websocket(state: WebsocketState) -> Nil {
