@@ -46,21 +46,8 @@ pub fn init_board(
   do_draw_board(ctx, board.color_indexes, board.width, board.height)
 }
 
-pub fn draw_board(
-  board: Board,
-  ctx: Option(Context),
-  to_msg: fn(Canvas, Context) -> msg,
-) -> Effect(msg) {
-  use dispatch, _ <- effect.after_paint()
-
-  let ctx = case ctx {
-    Some(ctx) -> ctx
-    None -> {
-      let #(canvas, ctx) = do_load_canvas_and_context("base-canvas")
-      to_msg(canvas, ctx) |> dispatch
-      ctx
-    }
-  }
+pub fn draw_board(board: Board, ctx: Context) -> Effect(msg) {
+  use _ <- effect.from()
 
   do_draw_board(ctx, board.color_indexes, board.width, board.height)
 }

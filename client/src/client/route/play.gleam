@@ -20,7 +20,6 @@ pub type Model {
   Model(
     board_state: BoardState,
     socket_state: SocketState,
-    canvas_state: CanvasHandle,
     presence_state: PresenceState,
   )
 }
@@ -30,21 +29,22 @@ pub type BoardState {
   Loaded(
     board: Board,
     camera: Camera,
+    canvas_handle: CanvasHandle,
     pan_state: PanState,
     pointer_position: Vec2,
   )
   Failed(error_text: String)
 }
 
+pub type CanvasHandle {
+  Unavailable
+  Cached(canvas: board.Canvas, ctx: board.Context)
+}
+
 pub type SocketState {
   Connecting
   Connected(socket: WebSocket)
   //TODO: failed
-}
-
-pub type CanvasHandle {
-  Unavailable
-  Cached(canvas: board.Canvas, ctx: board.Context)
 }
 
 pub type PanState {
@@ -81,7 +81,6 @@ pub fn init() -> #(Model, Effect(Msg)) {
     Model(
       board_state: Loading,
       socket_state: Connecting,
-      canvas_state: Unavailable,
       presence_state: Unknown,
     ),
     effect,
@@ -94,32 +93,23 @@ pub fn update(
   msg: Msg,
 ) -> #(Session, Model, Effect(Msg)) {
   case model, msg {
-    Model(board_state: Loading, canvas_state:, ..), ApiReturnedSnapshot(result) ->
+    Model(board_state: Loading, ..), ApiReturnedSnapshot(result) ->
       case result {
         Ok(board.Snapshot(color_indexes:, width:, height:)) -> {
           let board = Board(color_indexes:, width:, height:)
+          let board_state =
+            Loaded(
+              board:,
+              camera: camera.new(),
+              canvas_handle: Unavailable,
+              pan_state: Idle,
+              pointer_position: Vec2(0.0, 0.0),
+            )
+          let model = Model(..model, board_state:)
           #(
             session,
-            Model(
-              ..model,
-              board_state: Loaded(
-                board:,
-                camera: camera.new(),
-                pan_state: Idle,
-                pointer_position: Vec2(0.0, 0.0),
-              ),
-            ),
-            case canvas_state {
-              Unavailable ->
-                board.init_board(board, None, None, DomReturnedCanvas)
-              Cached(canvas:, ctx:) ->
-                board.init_board(
-                  board,
-                  Some(canvas),
-                  Some(ctx),
-                  DomReturnedCanvas,
-                )
-            },
+            model,
+            board.init_board(board, None, None, DomReturnedCanvas),
           )
         }
         Error(_) -> #(
@@ -131,7 +121,12 @@ pub fn update(
           effect.none(),
         )
       }
-    Model(canvas_state: Unavailable, ..), DomReturnedCanvas(canvas:, ctx:) -> {
+    Model(
+      board_state: Loaded(canvas_handle: Unavailable, ..) as board_state,
+      ..,
+    ),
+      DomReturnedCanvas(canvas:, ctx:)
+    -> {
       let navigation_effects = [
         keyboard.lifecycle(keyboard.Space, SpaceChanged),
         pointer.listen_motion(pointer.PointerMove, PointerMoved),
@@ -147,11 +142,11 @@ pub fn update(
         ),
         pointer.listen_wheel(WheelChanged),
       ]
-      #(
-        session,
-        Model(..model, canvas_state: Cached(canvas:, ctx:)),
-        navigation_effects |> effect.batch,
-      )
+
+      let board_state =
+        Loaded(..board_state, canvas_handle: Cached(canvas:, ctx:))
+      let model = Model(..model, board_state:)
+      #(session, model, navigation_effects |> effect.batch)
     }
     Model(socket_state: Connecting, ..),
       WebSocketEvent(websocket.Opened(socket))
@@ -276,14 +271,17 @@ fn handle_server_message(
       let model = Model(..model, presence_state:)
       #(model, effect.none())
     }
-    Model(board_state: Loaded(board:, ..) as board_state, ..),
+    Model(
+      board_state: Loaded(board:, canvas_handle: Cached(ctx:, ..), ..) as board_state,
+      ..,
+    ),
       transport.TileUpdate(x:, y:, color:)
     -> {
       let board = board.update_board(board, x, y, color)
       let board_state = Loaded(..board_state, board:)
       let model = Model(..model, board_state:)
-      //TODO: will change later when i have a better idea of how i want to structure canvas context stuff
-      #(model, board.draw_board(board, None, DomReturnedCanvas))
+      let effect = board.draw_board(board, ctx)
+      #(model, effect)
     }
     _, _ -> #(model, effect.none())
   }
