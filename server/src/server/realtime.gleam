@@ -1,4 +1,5 @@
 import atomic_array.{type AtomicArray}
+import gleam/bool
 import gleam/erlang/process
 import gleam/http/request
 import gleam/http/response
@@ -170,6 +171,9 @@ fn handle_client_message(
 ) -> WebsocketState {
   case message {
     transport.TileChanged(x:, y:, color:) -> {
+      // authoritative server, ideally client should never send messages for out of bounds tiles
+      use <- bool.guard(x < 0 || x > 999 || y < 0 || y > 999, return: state)
+
       let tile_index = y * 1000 + x
       let array_index = tile_index / 16
       let bit_offset = { tile_index % 16 } * 4

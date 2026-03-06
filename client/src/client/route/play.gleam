@@ -173,14 +173,19 @@ pub fn update(
       let pointer_position =
         Vec2(event.client_x, event.client_y) |> camera.from_screen(camera, _)
 
-      let message =
-        transport.TileChanged(
-          x: float.truncate(pointer_position.x),
-          y: float.truncate(pointer_position.y),
-          color: 5,
-        )
-      let effect = send_client_message(socket, message)
-      #(session, model, effect)
+      case pointer_position {
+        Vec2(x:, y:) if x >=. 0.0 && x <. 1000.0 && y >=. 0.0 && y <. 1000.0 -> {
+          let message =
+            transport.TileChanged(
+              x: float.truncate(pointer_position.x),
+              y: float.truncate(pointer_position.y),
+              color: 5,
+            )
+          let effect = send_client_message(socket, message)
+          #(session, model, effect)
+        }
+        _ -> #(session, model, effect.none())
+      }
     }
 
     Model(board_state: Loaded(..) as board_state, ..), SpaceChanged(is_down:) -> {
