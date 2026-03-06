@@ -9,6 +9,18 @@ pub type Board {
   Board(color_indexes: BitArray, width: Int, height: Int)
 }
 
+//TODO: make opaque
+pub type Tile {
+  Tile(x: Int, y: Int)
+}
+
+pub fn new_tile(board: Board, x: Int, y: Int) -> Result(Tile, Nil) {
+  case x >= 0 && x < board.width && y >= 0 && y < board.height {
+    True -> Ok(Tile(x:, y:))
+    False -> Error(Nil)
+  }
+}
+
 pub fn update_board(board: Board, x: Int, y: Int, color: Int) -> Board {
   let color_indexes =
     do_update_board(board.color_indexes, board.width, board.height, x, y, color)

@@ -31,9 +31,15 @@ pub type BoardState {
     camera: Camera,
     canvas_handle: CanvasHandle,
     pan_state: PanState,
+    tile_placement: TilePlacementState,
     pointer_position: Vec2,
   )
   Failed(error_text: String)
+}
+
+pub type TilePlacementState {
+  TilePlacementIdle
+  Pressed(tile: board.Tile)
 }
 
 pub type CanvasHandle {
@@ -103,6 +109,7 @@ pub fn update(
               camera: camera.new(),
               canvas_handle: Unavailable,
               pan_state: Idle,
+              tile_placement: TilePlacementIdle,
               pointer_position: Vec2(0.0, 0.0),
             )
           let model = Model(..model, board_state:)
@@ -159,28 +166,62 @@ pub fn update(
     }
 
     Model(
-      board_state: Loaded(pan_state: Idle, camera:, ..),
+      board_state: Loaded(
+        tile_placement: TilePlacementIdle,
+        board:,
+        camera:,
+        ..,
+      ) as board_state,
+      ..,
+    ),
+      PrimaryPointerPressedDown(event)
+    -> {
+      let tile =
+        Vec2(event.client_x, event.client_y) |> screen_to_tile(board, camera)
+
+      case tile {
+        Ok(tile) -> {
+          let tile_placement = Pressed(tile:)
+          let board_state = Loaded(..board_state, tile_placement:)
+          let model = Model(..model, board_state:)
+          #(session, model, effect.none())
+        }
+        _ -> #(session, model, effect.none())
+      }
+    }
+
+    Model(
+      board_state: Loaded(
+        pan_state: Idle,
+        tile_placement: Pressed(tile: pressed_tile),
+        board:,
+        camera:,
+        ..,
+      ) as board_state,
       socket_state: Connected(socket:),
       ..,
     ),
       PrimaryPointerReleased(event)
     -> {
-      let pointer_position =
-        Vec2(event.client_x, event.client_y) |> camera.from_screen(camera, _)
+      let released_tile =
+        Vec2(event.client_x, event.client_y) |> screen_to_tile(board, camera)
 
-      case pointer_position {
-        Vec2(x:, y:) if x >=. 0.0 && x <. 1000.0 && y >=. 0.0 && y <. 1000.0 -> {
+      let effect = case released_tile {
+        Ok(released_tile) if pressed_tile == released_tile -> {
           let message =
             transport.TileChanged(
-              x: float.truncate(pointer_position.x),
-              y: float.truncate(pointer_position.y),
+              x: released_tile.x,
+              y: released_tile.y,
               color: 5,
             )
-          let effect = send_client_message(socket, message)
-          #(session, model, effect)
+          send_client_message(socket, message)
         }
-        _ -> #(session, model, effect.none())
+        _ -> effect.none()
       }
+
+      let board_state = Loaded(..board_state, tile_placement: TilePlacementIdle)
+      let model = Model(..model, board_state:)
+      #(session, model, effect)
     }
 
     Model(board_state: Loaded(..) as board_state, ..), SpaceChanged(is_down:) -> {
@@ -259,6 +300,19 @@ pub fn update(
     }
     _, _ -> #(session, model, effect.none())
   }
+}
+
+fn screen_to_tile(
+  position: Vec2,
+  board: Board,
+  camera: Camera,
+) -> Result(board.Tile, Nil) {
+  let world_position = camera.from_screen(camera, position)
+
+  let x = float.truncate(world_position.x)
+  let y = float.truncate(world_position.y)
+
+  board.new_tile(board, x, y)
 }
 
 fn handle_server_message(
