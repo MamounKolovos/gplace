@@ -9,6 +9,22 @@ pub type Board {
   Board(color_indexes: BitArray, width: Int, height: Int)
 }
 
+pub fn update_board(board: Board, x: Int, y: Int, color: Int) -> Board {
+  let color_indexes =
+    do_update_board(board.color_indexes, board.width, board.height, x, y, color)
+  Board(..board, color_indexes:)
+}
+
+@external(javascript, "./board_ffi.mjs", "updateBoard")
+fn do_update_board(
+  color_indexes: BitArray,
+  width: Int,
+  height: Int,
+  x: Int,
+  y: Int,
+  color: Int,
+) -> BitArray
+
 pub fn init_board(
   board: Board,
   canvas: Option(Canvas),

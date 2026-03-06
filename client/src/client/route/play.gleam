@@ -8,11 +8,13 @@ import client/network
 import client/session.{type Session}
 import gleam/float
 import gleam/int
+import gleam/json
 import gleam/option.{None, Some}
 import lustre/attribute
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
+import shared/transport.{type ClientMessage, type ServerMessage}
 
 pub type Model {
   Model(
@@ -161,6 +163,26 @@ pub fn update(
       )
     }
 
+    Model(
+      board_state: Loaded(pan_state: Idle, camera:, ..),
+      socket_state: Connected(socket:),
+      ..,
+    ),
+      PrimaryPointerReleased(event)
+    -> {
+      let pointer_position =
+        Vec2(event.client_x, event.client_y) |> camera.from_screen(camera, _)
+
+      let message =
+        transport.TileChanged(
+          x: float.truncate(pointer_position.x),
+          y: float.truncate(pointer_position.y),
+          color: 5,
+        )
+      let effect = send_client_message(socket, message)
+      #(session, model, effect)
+    }
+
     Model(board_state: Loaded(..) as board_state, ..), SpaceChanged(is_down:) -> {
       let pan_state = case is_down {
         True -> PanPrimed
@@ -225,14 +247,51 @@ pub fn update(
       #(session, model, effect.none())
     }
 
-    // TODO: actually decode messages into json
     model, WebSocketEvent(websocket.ReceivedMessage(message)) -> {
-      let assert Ok(user_count) = int.parse(message)
-      let model = Model(..model, presence_state: Known(user_count:))
-      #(session, model, effect.none())
+      case json.parse(message, transport.server_message_decoder()) {
+        Ok(message) -> {
+          let #(model, effect) = handle_server_message(model, message)
+          #(session, model, effect)
+        }
+        // not sure what else to do other than ignore
+        Error(_) -> #(session, model, effect.none())
+      }
     }
     _, _ -> #(session, model, effect.none())
   }
+}
+
+fn handle_server_message(
+  model: Model,
+  message: ServerMessage,
+) -> #(Model, Effect(Msg)) {
+  case model, message {
+    model, transport.UserCountUpdated(count:) -> {
+      let presence_state = Known(user_count: count)
+      let model = Model(..model, presence_state:)
+      #(model, effect.none())
+    }
+    Model(board_state: Loaded(board:, ..) as board_state, ..),
+      transport.TileUpdate(x:, y:, color:)
+    -> {
+      let board = board.update_board(board, x, y, color)
+      let board_state = Loaded(..board_state, board:)
+      let model = Model(..model, board_state:)
+      //TODO: will change later when i have a better idea of how i want to structure canvas context stuff
+      #(model, board.draw_board(board, None, DomReturnedCanvas))
+    }
+    _, _ -> #(model, effect.none())
+  }
+}
+
+fn send_client_message(
+  socket: WebSocket,
+  message: transport.ClientMessage,
+) -> Effect(Msg) {
+  message
+  |> transport.client_message_to_json
+  |> json.to_string
+  |> websocket.send(socket, _)
 }
 
 pub fn view(model: Model) -> Element(Msg) {

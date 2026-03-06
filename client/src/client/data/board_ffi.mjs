@@ -24,6 +24,40 @@ export function setDimensions(canvas, width, height) {
 }
 
 /**
+ * 
+ * @param {BitArray$BitArray} color_indexes 
+ * @param {number} width 
+ * @param {number} height 
+ * @param {number} x 
+ * @param {number} y 
+ * @param {number} color 
+ */
+export function updateBoard(color_indexes, width, height, x, y, color) {
+  /** @type {Uint8Array} */
+  // TODO: rawBuffer is unstable, change when gleam 1.15 is released
+  const colorPairs = color_indexes.rawBuffer
+
+  const tileIndex = y * width + x
+  const arrayIndex = Math.trunc(tileIndex / 2);
+  // + 1 because high nibble is rendered before low nibble
+  // for example, tiles 4 and 5 are stored as 0b44445555
+  const bitOffset = ((tileIndex + 1) % 2) * 4
+
+  // console.log(x, y, color)
+  // console.log(tileIndex, arrayIndex, bitOffset)
+
+  const pair = colorPairs[arrayIndex]
+
+  const newPair = (pair & ~(0b1111 << bitOffset)) | ((color & 0b1111) << bitOffset)
+
+  // console.log(pair.toString(2).padStart(8, "0"), newPair.toString(2).padStart(8, "0"))
+  
+  let newColorPairs = new Uint8Array(colorPairs)
+  newColorPairs[arrayIndex] = newPair
+  return BitArray$BitArray(newColorPairs)
+}
+
+/**
  * @param {CanvasRenderingContext2D} ctx
  * @param {BitArray$BitArray} color_indexes 
  * @param {number} width
