@@ -31,6 +31,32 @@ pub fn websocket_handler(
   )
 }
 
+type WebsocketState {
+  WebsocketState(
+    broker: process.Subject(BrokerMessage),
+    registry: GroupRegistry(WebsocketMessage),
+    board: AtomicArray,
+  )
+}
+
+fn init_websocket(
+  _conn: mist.WebsocketConnection,
+  broker: process.Subject(BrokerMessage),
+  registry: GroupRegistry(WebsocketMessage),
+  board: AtomicArray,
+) -> #(WebsocketState, process.Subject(WebsocketMessage)) {
+  let client = group_registry.join(registry, "board", process.self())
+  process.send(broker, ClientJoined)
+  #(WebsocketState(broker:, registry:, board:), client)
+}
+
+fn close_websocket(state: WebsocketState) -> Nil {
+  echo "connection severed!"
+  group_registry.leave(state.registry, "board", [process.self()])
+  process.send(state.broker, ClientLeft)
+  Nil
+}
+
 /// messages sent to Broker
 pub opaque type BrokerMessage {
   ClientJoined
@@ -98,14 +124,6 @@ fn broadcast(
 pub opaque type WebsocketMessage {
   UserCountChanged(user_count: Int)
   TileUpdated(x: Int, y: Int, color: Int)
-}
-
-type WebsocketState {
-  WebsocketState(
-    broker: process.Subject(BrokerMessage),
-    registry: GroupRegistry(WebsocketMessage),
-    board: AtomicArray,
-  )
 }
 
 fn handle_websocket_message(
@@ -192,22 +210,4 @@ fn send_server_message(
     Ok(Nil) -> Nil
     Error(_) -> wisp.log_error("failed to send websocket frame to client")
   }
-}
-
-fn init_websocket(
-  _conn: mist.WebsocketConnection,
-  broker: process.Subject(BrokerMessage),
-  registry: GroupRegistry(WebsocketMessage),
-  board: AtomicArray,
-) -> #(WebsocketState, process.Subject(WebsocketMessage)) {
-  let client = group_registry.join(registry, "board", process.self())
-  process.send(broker, ClientJoined)
-  #(WebsocketState(broker:, registry:, board:), client)
-}
-
-fn close_websocket(state: WebsocketState) -> Nil {
-  echo "connection severed!"
-  group_registry.leave(state.registry, "board", [process.self()])
-  process.send(state.broker, ClientLeft)
-  Nil
 }
