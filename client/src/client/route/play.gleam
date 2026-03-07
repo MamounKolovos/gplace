@@ -9,7 +9,7 @@ import client/session.{type Session}
 import gleam/float
 import gleam/int
 import gleam/json
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 import lustre/attribute
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
@@ -17,11 +17,7 @@ import lustre/element/html
 import shared/transport.{type ClientMessage, type ServerMessage}
 
 pub type Model {
-  Model(
-    board_state: BoardState,
-    socket_state: SocketState,
-    presence_state: PresenceState,
-  )
+  Model(board_state: BoardState, socket_state: SocketState)
 }
 
 pub type BoardState {
@@ -49,7 +45,7 @@ pub type CanvasHandle {
 
 pub type SocketState {
   Connecting
-  Connected(socket: WebSocket)
+  Connected(socket: WebSocket, user_count: Option(Int))
   //TODO: failed
 }
 
@@ -83,14 +79,7 @@ pub fn init() -> #(Model, Effect(Msg)) {
       websocket.init("ws://localhost:8000/api/ws", WebSocketEvent),
     ])
 
-  #(
-    Model(
-      board_state: Loading,
-      socket_state: Connecting,
-      presence_state: Unknown,
-    ),
-    effect,
-  )
+  #(Model(board_state: Loading, socket_state: Connecting), effect)
 }
 
 pub fn update(
@@ -160,7 +149,7 @@ pub fn update(
     -> {
       #(
         session,
-        Model(..model, socket_state: Connected(socket:)),
+        Model(..model, socket_state: Connected(socket:, user_count: None)),
         effect.none(),
       )
     }
@@ -198,8 +187,7 @@ pub fn update(
         camera:,
         ..,
       ) as board_state,
-      socket_state: Connected(socket:),
-      ..,
+      socket_state: Connected(socket:, ..),
     ),
       PrimaryPointerReleased(event)
     -> {
@@ -320,9 +308,11 @@ fn handle_server_message(
   message: ServerMessage,
 ) -> #(Model, Effect(Msg)) {
   case model, message {
-    model, transport.UserCountUpdated(count:) -> {
-      let presence_state = Known(user_count: count)
-      let model = Model(..model, presence_state:)
+    Model(socket_state: Connected(..) as socket_state, ..),
+      transport.UserCountUpdated(count:)
+    -> {
+      let socket_state = Connected(..socket_state, user_count: Some(count))
+      let model = Model(..model, socket_state:)
       #(model, effect.none())
     }
     Model(
@@ -356,7 +346,7 @@ pub fn view(model: Model) -> Element(Msg) {
     Loading -> html.text("waiting...")
     Loaded(camera:, pointer_position:, pan_state:, ..) ->
       html.div([], [
-        hud_view(camera, pointer_position, model.presence_state),
+        hud_view(camera, pointer_position, model.socket_state),
         canvas_view(camera, pan_state),
       ])
     Failed(error_text:) -> html.text(error_text)
@@ -366,13 +356,13 @@ pub fn view(model: Model) -> Element(Msg) {
 fn hud_view(
   camera: Camera,
   pointer_position: Vec2,
-  presence_state: PresenceState,
+  socket_state: SocketState,
 ) -> Element(Msg) {
   html.div([], [
     pointer_world_view(camera, pointer_position),
-    case presence_state {
-      Known(user_count:) -> user_count_view(user_count)
-      Unknown -> element.none()
+    case socket_state {
+      Connected(user_count: Some(user_count), ..) -> user_count_view(user_count)
+      _ -> element.none()
     },
   ])
 }
