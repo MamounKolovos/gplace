@@ -1,4 +1,4 @@
-import client/data/board.{type Board, Board}
+import client/data/board.{type Board}
 import client/data/camera.{type Camera}
 import client/data/keyboard
 import client/data/pointer
@@ -14,6 +14,8 @@ import lustre/attribute
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
+import rsvp
+import shared/snapshot.{type Snapshot}
 import shared/transport.{type ClientMessage, type ServerMessage}
 
 pub type Model {
@@ -63,7 +65,7 @@ pub type PresenceState {
 
 pub type Msg {
   DomReturnedCanvas(canvas: board.Canvas, ctx: board.Context)
-  ApiReturnedSnapshot(Result(board.Snapshot, network.Error))
+  ApiReturnedSnapshot(Result(Snapshot, network.Error))
   WebSocketEvent(websocket.Event)
   WheelChanged(pointer.WheelEvent)
   SpaceChanged(is_down: Bool)
@@ -75,7 +77,7 @@ pub type Msg {
 pub fn init() -> #(Model, Effect(Msg)) {
   let effect =
     effect.batch([
-      board.fetch_snapshot(ApiReturnedSnapshot),
+      fetch_snapshot(),
       websocket.init("ws://localhost:8000/api/ws", WebSocketEvent),
     ])
 
@@ -90,8 +92,8 @@ pub fn update(
   case model, msg {
     Model(board_state: Loading, ..), ApiReturnedSnapshot(result) ->
       case result {
-        Ok(board.Snapshot(color_indexes:, width:, height:)) -> {
-          let board = Board(color_indexes:, width:, height:)
+        Ok(snapshot) -> {
+          let board = board.from_snapshot(snapshot)
           let board_state =
             Loaded(
               board:,
@@ -288,6 +290,11 @@ pub fn update(
     }
     _, _ -> #(session, model, effect.none())
   }
+}
+
+fn fetch_snapshot() -> Effect(Msg) {
+  let handler = network.expect_json(snapshot.decoder(), ApiReturnedSnapshot)
+  rsvp.get("/api/board", handler)
 }
 
 fn screen_to_tile(

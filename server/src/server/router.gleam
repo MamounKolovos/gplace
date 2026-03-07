@@ -18,6 +18,7 @@ import server/sql
 import server/user
 import server/web.{type Context}
 import shared/api_error.{type ApiError, ApiError}
+import shared/snapshot.{type Snapshot, Snapshot}
 import wisp.{type Request, type Response}
 import youid/uuid
 
@@ -44,32 +45,15 @@ pub fn handle_request(
   }
 }
 
-pub type Snapshot {
-  Snapshot(color_indexes: BitArray, width: Int, height: Int)
-}
-
-fn snapshot_to_json(snapshot: Snapshot) -> Json {
-  let Snapshot(color_indexes:, width:, height:) = snapshot
-  json.object([
-    #(
-      "color_indexes",
-      color_indexes |> bit_array.base64_encode(True) |> json.string,
-    ),
-    #("width", json.int(width)),
-    #("height", json.int(height)),
-  ])
-}
-
 fn handle_board(
   request: wisp.Request,
   ctx: Context,
   board: AtomicArray,
 ) -> wisp.Response {
-  let color_indexes = board_to_bit_array(board)
+  let colors = board_to_bit_array(board)
 
-  Snapshot(color_indexes:, width: 1000, height: 1000)
-  |> snapshot_to_json
-  |> json.to_string
+  Snapshot(colors:, width: 1000, height: 1000)
+  |> snapshot.encode
   |> wisp.json_response(200)
 }
 

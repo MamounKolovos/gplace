@@ -25,17 +25,17 @@ export function setDimensions(canvas, width, height) {
 
 /**
  * 
- * @param {BitArray$BitArray} color_indexes 
+ * @param {BitArray$BitArray} colors 
  * @param {number} width 
  * @param {number} height 
  * @param {number} x 
  * @param {number} y 
  * @param {number} color 
  */
-export function updateBoard(color_indexes, width, height, x, y, color) {
+export function updateBoard(colors, width, height, x, y, color) {
   /** @type {Uint8Array} */
   // TODO: rawBuffer is unstable, change when gleam 1.15 is released
-  const colorPairs = color_indexes.rawBuffer
+  const colorPairs = colors.rawBuffer
 
   const tileIndex = y * width + x
   const arrayIndex = Math.trunc(tileIndex / 2);
@@ -59,28 +59,28 @@ export function updateBoard(color_indexes, width, height, x, y, color) {
 
 /**
  * @param {CanvasRenderingContext2D} ctx
- * @param {BitArray$BitArray} color_indexes 
+ * @param {BitArray$BitArray} colors 
  * @param {number} width
  * @param {number} height
  */
-export function drawBoard(ctx, color_indexes, width, height) {
+export function drawBoard(ctx, colors, width, height) {
   /** 
    * [hhhhllll, hhhhllll, ...]
    * @type {Uint8Array}
    */
-  const colorIndexPairs = color_indexes.rawBuffer
+  const colorPairs = colors.rawBuffer
   // filled with ABGR pixels but stored as RGBA internally due to little-endian memory layout
   // [RGBA, RGBA, ...]
-  const rgbaPixels = new Uint32Array(colorIndexPairs.length * 2)
+  const rgbaPixels = new Uint32Array(colorPairs.length * 2)
 
-  for (let i = 0; i < colorIndexPairs.length; i++) {
-    const indexPair = colorIndexPairs[i]
+  for (let i = 0; i < colorPairs.length; i++) {
+    const pair = colorPairs[i]
 
-    const highIndex = indexPair >> 4;
-    const lowIndex = indexPair & 0x0F;
+    const highColor = pair >> 4;
+    const lowColor = pair & 0x0F;
 
-    rgbaPixels[i * 2] = colorIndexToAbgr[highIndex]
-    rgbaPixels[i * 2 + 1] = colorIndexToAbgr[lowIndex]
+    rgbaPixels[i * 2] = colorToAbgr[highColor]
+    rgbaPixels[i * 2 + 1] = colorToAbgr[lowColor]
   }
 
   // [R, G, B, A, R, G, B, A, ...]
@@ -89,7 +89,7 @@ export function drawBoard(ctx, color_indexes, width, height) {
   ctx.putImageData(imageData, 0, 0)
 }
 
-const colorIndexToAbgr = [
+const colorToAbgr = [
   0xFFFFFFFF, // White
   0xFFE4E4E4, // Light Gray
   0xFF888888, // Gray

@@ -1,12 +1,14 @@
-import client/network
-import gleam/bit_array
-import gleam/dynamic/decode
 import gleam/option.{type Option, None, Some}
 import lustre/effect.{type Effect}
-import rsvp
+import shared/snapshot.{type Snapshot, Snapshot}
 
-pub type Board {
-  Board(color_indexes: BitArray, width: Int, height: Int)
+pub opaque type Board {
+  Board(colors: BitArray, width: Int, height: Int)
+}
+
+pub fn from_snapshot(snapshot: Snapshot) -> Board {
+  let Snapshot(colors:, width:, height:) = snapshot
+  Board(colors:, width:, height:)
 }
 
 //TODO: make opaque
@@ -22,14 +24,14 @@ pub fn new_tile(board: Board, x: Int, y: Int) -> Result(Tile, Nil) {
 }
 
 pub fn update_board(board: Board, x: Int, y: Int, color: Int) -> Board {
-  let color_indexes =
-    do_update_board(board.color_indexes, board.width, board.height, x, y, color)
-  Board(..board, color_indexes:)
+  let colors =
+    do_update_board(board.colors, board.width, board.height, x, y, color)
+  Board(..board, colors:)
 }
 
 @external(javascript, "./board_ffi.mjs", "updateBoard")
 fn do_update_board(
-  color_indexes: BitArray,
+  colors: BitArray,
   width: Int,
   height: Int,
   x: Int,
@@ -55,24 +57,19 @@ pub fn init_board(
   }
 
   do_set_dimensions(canvas, board.width, board.height)
-  do_draw_board(ctx, board.color_indexes, board.width, board.height)
+  do_draw_board(ctx, board.colors, board.width, board.height)
 }
 
 pub fn draw_board(board: Board, ctx: Context) -> Effect(msg) {
   use _ <- effect.from()
 
-  do_draw_board(ctx, board.color_indexes, board.width, board.height)
+  do_draw_board(ctx, board.colors, board.width, board.height)
 }
 
 /// passing in primitives instead of the board type directly is easier
 /// since i dont have to deal with the custom type in js
 @external(javascript, "./board_ffi.mjs", "drawBoard")
-fn do_draw_board(
-  ctx: Context,
-  color_indexes: BitArray,
-  width: Int,
-  height: Int,
-) -> Nil
+fn do_draw_board(ctx: Context, colors: BitArray, width: Int, height: Int) -> Nil
 
 @external(javascript, "./board_ffi.mjs", "setDimensions")
 fn do_set_dimensions(canvas: Canvas, width: Int, height: Int) -> Nil
@@ -85,28 +82,3 @@ pub type Context
 
 @external(javascript, "./board_ffi.mjs", "getCanvasAndContext")
 fn do_load_canvas_and_context(canvas_id: String) -> #(Canvas, Context)
-
-pub type Snapshot {
-  Snapshot(color_indexes: BitArray, width: Int, height: Int)
-}
-
-pub fn fetch_snapshot(
-  to_msg: fn(Result(Snapshot, network.Error)) -> msg,
-) -> Effect(msg) {
-  let handler = network.expect_json(snapshot_decoder(), to_msg)
-  rsvp.get("/api/board", handler)
-}
-
-fn snapshot_decoder() -> decode.Decoder(Snapshot) {
-  use color_indexes <- decode.field("color_indexes", decode.string)
-
-  case bit_array.base64_decode(color_indexes) {
-    Ok(color_indexes) -> {
-      use width <- decode.field("width", decode.int)
-      use height <- decode.field("height", decode.int)
-      decode.success(Snapshot(color_indexes:, width:, height:))
-    }
-    Error(Nil) ->
-      decode.failure(Snapshot(<<>>, -1, -1), expected: "color_indexes")
-  }
-}
