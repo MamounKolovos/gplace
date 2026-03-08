@@ -1,5 +1,4 @@
 import argus
-import atomic_array.{type AtomicArray}
 import formal/form.{type Form}
 import gleam/bit_array
 import gleam/crypto
@@ -14,6 +13,7 @@ import gleam/time/duration.{type Duration}
 import gleam/time/timestamp.{type Timestamp}
 import pog
 import server/auth
+import server/board.{type Board}
 import server/sql
 import server/user
 import server/web.{type Context}
@@ -30,11 +30,7 @@ type Error(f) {
   SessionParsingFailed
 }
 
-pub fn handle_request(
-  request: Request,
-  ctx: Context,
-  board: AtomicArray,
-) -> Response {
+pub fn handle_request(request: Request, ctx: Context, board: Board) -> Response {
   use request <- web.middleware(request)
   case wisp.path_segments(request) {
     ["api", "signup"] -> signup(request, ctx)
@@ -48,17 +44,13 @@ pub fn handle_request(
 fn handle_board(
   request: wisp.Request,
   ctx: Context,
-  board: AtomicArray,
+  board: Board,
 ) -> wisp.Response {
-  let colors = board_to_bit_array(board)
-
-  Snapshot(colors:, width: 1000, height: 1000)
+  board
+  |> board.to_snapshot
   |> snapshot.encode
   |> wisp.json_response(200)
 }
-
-@external(erlang, "board_ffi", "to_bit_array")
-fn board_to_bit_array(array: AtomicArray) -> BitArray
 
 fn me(request: wisp.Request, ctx: Context) -> wisp.Response {
   let result = {

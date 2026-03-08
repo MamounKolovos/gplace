@@ -1,16 +1,13 @@
-import atomic_array.{type AtomicArray}
-import gleam/bool
 import gleam/erlang/process
 import gleam/http/request
 import gleam/http/response
-import gleam/int
 import gleam/json
 import gleam/list
 import gleam/option.{Some}
 import gleam/otp/actor
-import gleam/set.{type Set}
 import group_registry.{type GroupRegistry}
 import mist
+import server/board.{type Board}
 import shared/transport.{type ClientMessage, type ServerMessage}
 import wisp
 
@@ -18,7 +15,7 @@ pub fn websocket_handler(
   request: request.Request(mist.Connection),
   broker: process.Subject(BrokerMessage),
   registry: GroupRegistry(WebsocketMessage),
-  board: AtomicArray,
+  board: Board,
 ) -> response.Response(mist.ResponseData) {
   mist.websocket(
     request,
@@ -36,7 +33,7 @@ type WebsocketState {
   WebsocketState(
     broker: process.Subject(BrokerMessage),
     registry: GroupRegistry(WebsocketMessage),
-    board: AtomicArray,
+    board: Board,
   )
 }
 
@@ -44,7 +41,7 @@ fn init_websocket(
   _conn: mist.WebsocketConnection,
   broker: process.Subject(BrokerMessage),
   registry: GroupRegistry(WebsocketMessage),
-  board: AtomicArray,
+  board: Board,
 ) -> #(WebsocketState, process.Subject(WebsocketMessage)) {
   let client = group_registry.join(registry, "board", process.self())
   process.send(broker, ClientJoined)
@@ -172,27 +169,7 @@ fn handle_client_message(
   case message {
     transport.TileChanged(x:, y:, color:) -> {
       // authoritative server, ideally client should never send messages for out of bounds tiles
-      use <- bool.guard(x < 0 || x > 999 || y < 0 || y > 999, return: state)
-
-      let tile_index = y * 1000 + x
-      let array_index = tile_index / 16
-      let bit_offset = { tile_index % 16 } * 4
-
-      let assert Ok(packed_colors) = atomic_array.get(state.board, array_index)
-      let assert <<left:size(bit_offset), _:4, right:bits>> = <<
-        packed_colors:64,
-      >>
-      let assert <<packed_colors:64>> = <<
-        left:size(bit_offset),
-        color:4,
-        right:bits,
-      >>
-      let assert Ok(_) =
-        atomic_array.exchange(
-          state.board,
-          at: array_index,
-          replace_with: packed_colors,
-        )
+      let assert Ok(_) = board.set_tile(state.board, x: x, y: y, color: color)
 
       process.send(state.broker, TileChanged(x:, y:, color:))
       state

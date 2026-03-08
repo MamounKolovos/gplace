@@ -1,4 +1,3 @@
-import atomic_array.{type AtomicArray}
 import envoy
 import gleam/erlang/process
 import gleam/http/request
@@ -12,6 +11,7 @@ import gleam/otp/supervision
 import group_registry.{type GroupRegistry}
 import mist
 import pog
+import server/board.{type Board}
 import server/realtime
 import server/router
 import server/web.{type Context, Context}
@@ -30,20 +30,7 @@ pub fn init() -> Result(actor.Started(Supervisor), actor.StartError) {
   let pog_config = pog_config()
   let ctx = Context(db: pog.named_connection(pog_config.pool_name))
 
-  // (1000 * 1000 * 4) / 64
-  let board = atomic_array.new_unsigned(62_500)
-
-  let _ =
-    int.range(0, 999_999, with: [], run: list.prepend)
-    |> list.map(fn(_) { int.random(16) })
-    |> list.sized_chunk(16)
-    |> list.index_map(fn(colors, i) {
-      let packed_colors =
-        list.index_fold(colors, from: 0, with: fn(acc, color, index) {
-          int.bitwise_or(acc, int.bitwise_shift_left(color, index * 4))
-        })
-      atomic_array.set(board, i, packed_colors)
-    })
+  let board = board.random(width: 1000, height: 1000)
 
   let registry_name = process.new_name("registry")
   let registry = group_registry.get_registry(registry_name)
@@ -69,7 +56,7 @@ fn mist_config(
   ctx: Context,
   broker: process.Subject(realtime.BrokerMessage),
   registry: GroupRegistry(realtime.WebsocketMessage),
-  board: AtomicArray,
+  board: Board,
 ) -> mist.Builder(mist.Connection, mist.ResponseData) {
   let assert Ok(secret_key_base) = envoy.get("SECRET_KEY_BASE")
 
