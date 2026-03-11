@@ -46,11 +46,13 @@ pub fn init(
   let broker_config = realtime.broker_config(broker_name, registry)
   let broker = process.named_subject(broker_name)
 
+  let mist_config = mist_config(ctx, broker, registry, board)
+
   let db_spec = pog_config |> pog.supervised
   let registry_spec = registry_name |> group_registry.supervised
   let broker_spec = supervision.worker(fn() { actor.start(broker_config) })
   let server_spec =
-    mist_config(ctx, broker, registry, board, log_start: True)
+    mist_config
     |> mist.supervised
 
   static_supervisor.new(static_supervisor.RestForOne)
@@ -81,27 +83,20 @@ pub fn mist_config(
   broker: process.Subject(realtime.BrokerMessage),
   registry: GroupRegistry(realtime.WebsocketMessage),
   board: Board,
-  log_start log_start: Bool,
 ) -> mist.Builder(mist.Connection, mist.ResponseData) {
   let assert Ok(secret_key_base) = envoy.get("SECRET_KEY_BASE")
 
-  let config =
-    mist.new(fn(request) {
-      case request.path_segments(request) {
-        ["api", "ws"] ->
-          realtime.websocket_handler(request, broker, registry, board)
-        _ -> {
-          let handler = router.handle_request(_, ctx, board)
-          wisp_mist.handler(handler, secret_key_base)(request)
-        }
+  mist.new(fn(request) {
+    case request.path_segments(request) {
+      ["api", "ws"] ->
+        realtime.websocket_handler(request, broker, registry, board)
+      _ -> {
+        let handler = router.handle_request(_, ctx, board)
+        wisp_mist.handler(handler, secret_key_base)(request)
       }
-    })
-    |> mist.port(8000)
-
-  case log_start {
-    True -> config
-    False -> config |> mist.after_start(fn(_, _, _) { Nil })
-  }
+    }
+  })
+  |> mist.port(8000)
 }
 
 pub fn pog_config(name: process.Name(pog.Message)) -> pog.Config {

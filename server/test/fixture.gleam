@@ -55,10 +55,14 @@ fn init_server(
   let broker_config = realtime.broker_config(broker_name, registry)
   let broker = process.named_subject(broker_name)
 
+  let mist_config =
+    server.mist_config(ctx, broker, registry, board)
+    |> mist.after_start(fn(_, _, _) { Nil })
+
   let registry_spec = registry_name |> group_registry.supervised
   let broker_spec = supervision.worker(fn() { actor.start(broker_config) })
   let server_spec =
-    server.mist_config(ctx, broker, registry, board, log_start: False)
+    mist_config
     |> mist.supervised
 
   static_supervisor.new(static_supervisor.RestForOne)
