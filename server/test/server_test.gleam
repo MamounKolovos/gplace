@@ -1,48 +1,15 @@
-import gleam/http
-import gleam/http/request
-import gleam/json
-import gleam/option.{Some}
-import gleam/time/duration.{type Duration}
-import gleam/time/timestamp.{type Timestamp}
-import gleam/uri
+import fixture
+import gleam/time/duration
+import gleam/time/timestamp
 import gleeunit
-import global_value
-import pog
-import server
 import server/auth
-import server/router
-import server/web.{type Context, Context}
-import wisp/simulate
 
 pub fn main() -> Nil {
   gleeunit.main()
 }
 
-fn with_connection(test_case: fn(pog.Connection) -> a) -> Nil {
-  let pool = global_connection_pool()
-  let assert Error(pog.TransactionRolledBack(Nil)) =
-    pog.transaction(pool, fn(conn) {
-      test_case(conn)
-      Error(Nil)
-    })
-  Nil
-}
-
-fn global_connection_pool() -> pog.Connection {
-  global_value.create_with_unique_name(
-    "server_test.global_connection_pool",
-    fn() { new_pool() },
-  )
-}
-
-fn new_pool() -> pog.Connection {
-  let config = server.pog_config()
-  let assert Ok(_) = pog.start(config)
-  pog.named_connection(config.pool_name)
-}
-
 pub fn signup_with_duplicate_email_test() {
-  use conn <- with_connection()
+  use conn <- fixture.with_connection()
 
   let assert Ok(_) =
     auth.signup(
@@ -66,7 +33,7 @@ pub fn signup_with_duplicate_email_test() {
 }
 
 pub fn signup_with_duplicate_username_test() {
-  use conn <- with_connection()
+  use conn <- fixture.with_connection()
 
   let assert Ok(_) =
     auth.signup(
@@ -90,7 +57,7 @@ pub fn signup_with_duplicate_username_test() {
 }
 
 pub fn session_valid_test() {
-  use conn <- with_connection()
+  use conn <- fixture.with_connection()
 
   let assert Ok(#(created_user, session_token)) =
     auth.signup(
@@ -113,7 +80,7 @@ pub fn session_valid_test() {
 }
 
 pub fn session_expired_test() {
-  use conn <- with_connection()
+  use conn <- fixture.with_connection()
 
   let assert Ok(#(_, session_token)) =
     auth.signup(
@@ -134,7 +101,7 @@ pub fn session_expired_test() {
 }
 
 pub fn login_with_valid_session_test() {
-  use conn <- with_connection()
+  use conn <- fixture.with_connection()
 
   let now = timestamp.system_time()
 
@@ -166,7 +133,7 @@ pub fn login_with_valid_session_test() {
 }
 
 pub fn login_with_valid_credentials_test() {
-  use conn <- with_connection()
+  use conn <- fixture.with_connection()
 
   let now = timestamp.system_time()
 
@@ -196,7 +163,7 @@ pub fn login_with_valid_credentials_test() {
 }
 
 pub fn login_with_invalid_credentials_test() {
-  use conn <- with_connection()
+  use conn <- fixture.with_connection()
 
   let now = timestamp.system_time()
 
@@ -234,7 +201,7 @@ pub fn login_with_invalid_credentials_test() {
 //   let request =
 //     simulate.request(http.Post, "/api/login") |> simulate.form_body(body)
 
-//   use conn <- with_connection()
+//   use conn <- fixture.with_connection()
 //   let ctx = Context(db: conn)
 
 //   let response_body =
