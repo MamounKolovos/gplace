@@ -343,8 +343,7 @@ fn send_client_message(
   message: transport.ClientMessage,
 ) -> Effect(Msg) {
   message
-  |> transport.client_message_to_json
-  |> json.to_string
+  |> transport.encode_client_message
   |> websocket.send(socket, _)
 }
 

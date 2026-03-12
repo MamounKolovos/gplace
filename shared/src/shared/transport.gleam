@@ -12,7 +12,11 @@ pub fn client_message_decoder() -> Decoder(ClientMessage) {
   decode.success(TileChanged(x:, y:, color:))
 }
 
-pub fn client_message_to_json(client_message: ClientMessage) -> Json {
+pub fn encode_client_message(message: ClientMessage) -> String {
+  message |> client_message_to_json |> json.to_string
+}
+
+fn client_message_to_json(client_message: ClientMessage) -> Json {
   let TileChanged(x:, y:, color:) = client_message
   json.object([
     #("x", json.int(x)),
@@ -43,7 +47,11 @@ pub fn server_message_decoder() -> Decoder(ServerMessage) {
   }
 }
 
-pub fn server_message_to_json(server_message: ServerMessage) -> Json {
+pub fn encode_server_message(message: ServerMessage) -> String {
+  message |> server_message_to_json |> json.to_string
+}
+
+fn server_message_to_json(server_message: ServerMessage) -> Json {
   case server_message {
     UserCountUpdated(count:) ->
       json.object([

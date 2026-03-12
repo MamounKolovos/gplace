@@ -183,8 +183,7 @@ fn send_server_message(
 ) -> Nil {
   let result =
     message
-    |> transport.server_message_to_json
-    |> json.to_string
+    |> transport.encode_server_message
     |> mist.send_text_frame(conn, _)
 
   case result {

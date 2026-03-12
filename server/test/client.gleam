@@ -89,8 +89,7 @@ fn send_to_server(
   message: ClientMessage,
 ) -> Result(Nil, stratus.SocketReason) {
   message
-  |> transport.client_message_to_json
-  |> json.to_string
+  |> transport.encode_client_message
   |> stratus.send_text_message(conn, _)
 }
 
