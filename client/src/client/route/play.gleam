@@ -351,9 +351,9 @@ fn send_client_message(
 pub fn view(model: Model) -> Element(Msg) {
   case model.board_state {
     Loading -> html.text("waiting...")
-    Loaded(camera:, pointer_position:, pan_state:, ..) ->
+    Loaded(board:, camera:, pointer_position:, pan_state:, ..) ->
       html.div([], [
-        hud_view(camera, pointer_position, model.socket_state),
+        hud_view(board, camera, pointer_position, model.socket_state),
         canvas_view(camera, pan_state),
       ])
     Failed(error_text:) -> html.text(error_text)
@@ -361,12 +361,13 @@ pub fn view(model: Model) -> Element(Msg) {
 }
 
 fn hud_view(
+  board: Board,
   camera: Camera,
   pointer_position: Vec2,
   socket_state: SocketState,
 ) -> Element(Msg) {
   html.div([], [
-    pointer_world_view(camera, pointer_position),
+    pointer_world_view(board, camera, pointer_position),
     case socket_state {
       Connected(user_count: Some(user_count), ..) -> user_count_view(user_count)
       _ -> element.none()
@@ -374,17 +375,16 @@ fn hud_view(
   ])
 }
 
-fn pointer_world_view(camera: Camera, pointer_position: Vec2) -> Element(Msg) {
-  let pointer_world = camera.from_screen(camera, pointer_position)
+fn pointer_world_view(
+  board: Board,
+  camera: Camera,
+  pointer_position: Vec2,
+) -> Element(Msg) {
+  let tile = screen_to_tile(pointer_position, board, camera)
 
-  // TODO: _string suffix necessary because of compiler bug
-  // fixed on main so be sure to remove once new compiler version is out
-  let #(x_string, y_string) = case pointer_world {
-    Vec2(x:, y:) if x >=. 0.0 && x <. 1000.0 && y >=. 0.0 && y <. 1000.0 -> #(
-      x |> float.truncate |> int.to_string,
-      y |> float.truncate |> int.to_string,
-    )
-    _ -> #("-", "-")
+  let #(x, y) = case tile {
+    Ok(tile) -> #(int.to_string(tile.x), int.to_string(tile.y))
+    Error(Nil) -> #("-", "-")
   }
 
   html.div(
@@ -399,7 +399,7 @@ fn pointer_world_view(camera: Camera, pointer_position: Vec2) -> Element(Msg) {
       ),
     ],
     [
-      html.text("(" <> x_string <> ", " <> y_string <> ")"),
+      html.text("(" <> x <> ", " <> y <> ")"),
     ],
   )
 }
