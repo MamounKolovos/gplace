@@ -16,7 +16,7 @@ import lustre/element.{type Element}
 import lustre/element/html
 import rsvp
 import shared/snapshot.{type Snapshot}
-import shared/transport.{type ClientMessage, type ServerMessage}
+import shared/transport.{type ServerMessage}
 
 pub type Model {
   Model(board_state: BoardState, socket_state: SocketState)

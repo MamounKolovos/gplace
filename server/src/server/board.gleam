@@ -8,8 +8,6 @@ pub const bits_per_color = 4
 /// bits per color divided by the maximum number of bits that can be stored in an atomic array integer
 pub const colors_per_chunk = 16
 
-const max_uint64 = 0xFFFF_FFFF_FFFF_FFFF
-
 const max_uint32 = 0xFFFF_FFFF
 
 pub opaque type Board {

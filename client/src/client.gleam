@@ -12,8 +12,6 @@ import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
 import modem
-import rsvp
-import shared/api_error.{ApiError}
 
 pub fn main() -> Nil {
   let app = lustre.application(init, update, view)

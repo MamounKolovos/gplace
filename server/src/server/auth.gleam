@@ -1,13 +1,12 @@
 import gleam/bool
 import gleam/crypto
-import gleam/option.{type Option, None, Some}
+import gleam/option.{None, Some}
 import gleam/result
 import gleam/time/duration.{type Duration}
 import gleam/time/timestamp.{type Timestamp}
 import pog
 import server/database
 import server/user.{type User}
-import server/web.{type Context}
 import youid/uuid.{type Uuid}
 
 pub type Error {

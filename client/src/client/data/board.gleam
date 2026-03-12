@@ -1,4 +1,4 @@
-import gleam/option.{type Option, None, Some}
+import gleam/option.{type Option, Some}
 import lustre/effect.{type Effect}
 import shared/snapshot.{type Snapshot, Snapshot}
 

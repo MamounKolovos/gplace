@@ -1,6 +1,5 @@
 import gleam/json.{type Json}
 import gleam/result
-import gleam/time/timestamp.{type Timestamp}
 import pog
 import server/database
 import server/sql

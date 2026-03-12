@@ -1,10 +1,6 @@
 import envoy
 import gleam/erlang/process
 import gleam/http/request
-import gleam/int
-import gleam/io
-import gleam/list
-import gleam/option.{None, Some}
 import gleam/otp/actor
 import gleam/otp/static_supervisor.{type Supervisor}
 import gleam/otp/supervision
