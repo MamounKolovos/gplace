@@ -159,6 +159,7 @@ pub fn update(
     Model(
       board_state: Loaded(
         tile_placement: TilePlacementIdle,
+        pan_state: Idle,
         board:,
         camera:,
         ..,
@@ -169,7 +170,6 @@ pub fn update(
     -> {
       let tile =
         Vec2(event.client_x, event.client_y) |> screen_to_tile(board, camera)
-
       case tile {
         Ok(tile) -> {
           let tile_placement = Pressed(tile:)
