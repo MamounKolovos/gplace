@@ -45,9 +45,12 @@ pub fn set_tile(
   y y: Int,
   color color: Int,
 ) -> Result(Nil, Nil) {
-  use <- bool.guard(x < 0 || x > 999 || y < 0 || y > 999, return: Error(Nil))
+  use <- bool.guard(
+    x < 0 || x >= board.width || y < 0 || y >= board.height,
+    return: Error(Nil),
+  )
 
-  let tile_index = y * 1000 + x
+  let tile_index = y * board.width + x
   let array_index = tile_index / 16
   let bit_offset = { tile_index % 16 } * 4
 
