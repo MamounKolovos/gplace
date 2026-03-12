@@ -43,7 +43,7 @@ pub fn with_client(test_case: fn(Client) -> a) -> Nil {
 }
 
 fn init_server(
-  registry_name: process.Name(group_registry.Message(realtime.WebsocketMessage)),
+  registry_name: process.Name(group_registry.Message(realtime.WebSocketMessage)),
   broker_name: process.Name(realtime.BrokerMessage),
 ) -> Result(actor.Started(Supervisor), actor.StartError) {
   let ctx = Context(db: global_connection_pool())

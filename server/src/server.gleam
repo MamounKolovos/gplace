@@ -33,7 +33,7 @@ pub fn main() -> Nil {
 
 pub fn init(
   pool_name: process.Name(pog.Message),
-  registry_name: process.Name(group_registry.Message(realtime.WebsocketMessage)),
+  registry_name: process.Name(group_registry.Message(realtime.WebSocketMessage)),
   broker_name: process.Name(realtime.BrokerMessage),
 ) -> Result(actor.Started(Supervisor), actor.StartError) {
   let pog_config = pog_config(pool_name)
@@ -81,7 +81,7 @@ pub fn stop(server: process.Pid) -> Nil {
 pub fn mist_config(
   ctx: Context,
   broker: process.Subject(realtime.BrokerMessage),
-  registry: GroupRegistry(realtime.WebsocketMessage),
+  registry: GroupRegistry(realtime.WebSocketMessage),
   board: Board,
 ) -> mist.Builder(mist.Connection, mist.ResponseData) {
   let assert Ok(secret_key_base) = envoy.get("SECRET_KEY_BASE")

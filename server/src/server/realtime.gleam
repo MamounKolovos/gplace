@@ -14,7 +14,7 @@ import wisp
 pub fn websocket_handler(
   request: request.Request(mist.Connection),
   broker: process.Subject(BrokerMessage),
-  registry: GroupRegistry(WebsocketMessage),
+  registry: GroupRegistry(WebSocketMessage),
   board: Board,
 ) -> response.Response(mist.ResponseData) {
   mist.websocket(
@@ -29,10 +29,10 @@ pub fn websocket_handler(
   )
 }
 
-type WebsocketState {
-  WebsocketState(
+type WebSocketState {
+  WebSocketState(
     broker: process.Subject(BrokerMessage),
-    registry: GroupRegistry(WebsocketMessage),
+    registry: GroupRegistry(WebSocketMessage),
     board: Board,
   )
 }
@@ -40,15 +40,15 @@ type WebsocketState {
 fn init_websocket(
   _conn: mist.WebsocketConnection,
   broker: process.Subject(BrokerMessage),
-  registry: GroupRegistry(WebsocketMessage),
+  registry: GroupRegistry(WebSocketMessage),
   board: Board,
-) -> #(WebsocketState, process.Subject(WebsocketMessage)) {
+) -> #(WebSocketState, process.Subject(WebSocketMessage)) {
   let client = group_registry.join(registry, "board", process.self())
   process.send(broker, ClientJoined)
-  #(WebsocketState(broker:, registry:, board:), client)
+  #(WebSocketState(broker:, registry:, board:), client)
 }
 
-fn close_websocket(state: WebsocketState) -> Nil {
+fn close_websocket(state: WebSocketState) -> Nil {
   echo "connection severed!"
   group_registry.leave(state.registry, "board", [process.self()])
   process.send(state.broker, ClientLeft)
@@ -64,7 +64,7 @@ pub opaque type BrokerMessage {
 
 pub fn broker_config(
   name: process.Name(BrokerMessage),
-  registry: GroupRegistry(WebsocketMessage),
+  registry: GroupRegistry(WebSocketMessage),
 ) -> actor.Builder(Nil, BrokerMessage, process.Subject(BrokerMessage)) {
   actor.new(Nil)
   |> actor.on_message(fn(state, message) {
@@ -76,7 +76,7 @@ pub fn broker_config(
 fn handle_broker_message(
   state: Nil,
   message: BrokerMessage,
-  registry: GroupRegistry(WebsocketMessage),
+  registry: GroupRegistry(WebSocketMessage),
 ) -> actor.Next(Nil, BrokerMessage) {
   case message {
     ClientJoined -> {
@@ -109,8 +109,8 @@ fn handle_broker_message(
 }
 
 fn broadcast(
-  registry: GroupRegistry(WebsocketMessage),
-  message: WebsocketMessage,
+  registry: GroupRegistry(WebSocketMessage),
+  message: WebSocketMessage,
 ) -> Nil {
   let clients = group_registry.members(registry, "board")
 
@@ -119,16 +119,16 @@ fn broadcast(
 }
 
 /// messages sent to websocket process by Broker
-pub opaque type WebsocketMessage {
+pub opaque type WebSocketMessage {
   UserCountChanged(user_count: Int)
   TileUpdated(x: Int, y: Int, color: Int)
 }
 
 fn handle_websocket_message(
-  state: WebsocketState,
-  message: mist.WebsocketMessage(WebsocketMessage),
+  state: WebSocketState,
+  message: mist.WebsocketMessage(WebSocketMessage),
   conn: mist.WebsocketConnection,
-) -> mist.Next(WebsocketState, WebsocketMessage) {
+) -> mist.Next(WebSocketState, WebSocketMessage) {
   case message {
     // sent by client
     mist.Text(message) ->
@@ -163,9 +163,9 @@ fn handle_websocket_message(
 }
 
 fn handle_client_message(
-  state: WebsocketState,
+  state: WebSocketState,
   message: ClientMessage,
-) -> WebsocketState {
+) -> WebSocketState {
   case message {
     transport.TileChanged(x:, y:, color:) -> {
       // authoritative server, ideally client should never send messages for out of bounds tiles
