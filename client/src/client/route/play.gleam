@@ -19,20 +19,33 @@ import shared/snapshot.{type Snapshot}
 import shared/transport.{type ServerMessage}
 
 pub type Model {
-  Model(board_state: BoardState, socket_state: SocketState)
+  Model(state: State)
 }
 
-pub type BoardState {
-  Loading
-  Loaded(
+pub type State {
+  SocketFailedToConnect
+  BoardFailedToLoad(error_text: String)
+
+  SocketConnecting
+  Initializing(
+    socket: WebSocket,
+    user_count: Option(Int),
+    updates: List(TileUpdate),
+  )
+  BoardLoaded(
     board: Board,
     camera: Camera,
     canvas_handle: CanvasHandle,
     pan_state: PanState,
     tile_placement: TilePlacementState,
     pointer_position: Vec2,
+    socket: WebSocket,
+    user_count: Option(Int),
   )
-  Failed(error_text: String)
+}
+
+pub type TileUpdate {
+  TileUpdate(x: Int, y: Int, color: Int)
 }
 
 pub type TilePlacementState {
@@ -45,22 +58,10 @@ pub type CanvasHandle {
   Cached(canvas: board.Canvas, ctx: board.Context)
 }
 
-pub type SocketState {
-  Connecting
-  Connected(socket: WebSocket, user_count: Option(Int))
-  //TODO: failed
-}
-
 pub type PanState {
   Idle
   PanPrimed
   Panning(last_pointer_position: Vec2)
-}
-
-//TODO: have socket state own this
-pub type PresenceState {
-  Unknown
-  Known(user_count: Int)
 }
 
 pub type Msg {
@@ -75,13 +76,9 @@ pub type Msg {
 }
 
 pub fn init() -> #(Model, Effect(Msg)) {
-  let effect =
-    effect.batch([
-      fetch_snapshot(),
-      websocket.init("ws://localhost:8000/api/ws", WebSocketEvent),
-    ])
+  let effect = websocket.init("ws://localhost:8000/api/ws", WebSocketEvent)
 
-  #(Model(board_state: Loading, socket_state: Connecting), effect)
+  #(Model(state: SocketConnecting), effect)
 }
 
 pub fn update(
@@ -90,20 +87,24 @@ pub fn update(
   msg: Msg,
 ) -> #(Session, Model, Effect(Msg)) {
   case model, msg {
-    Model(board_state: Loading, ..), ApiReturnedSnapshot(result) ->
+    Model(state: Initializing(socket:, user_count:, updates:)),
+      ApiReturnedSnapshot(result)
+    ->
       case result {
         Ok(snapshot) -> {
           let board = board.from_snapshot(snapshot)
-          let board_state =
-            Loaded(
+          let state =
+            BoardLoaded(
               board:,
               camera: camera.new(),
               canvas_handle: Unavailable,
               pan_state: Idle,
               tile_placement: TilePlacementIdle,
               pointer_position: Vec2(0.0, 0.0),
+              socket:,
+              user_count:,
             )
-          let model = Model(..model, board_state:)
+          let model = Model(state:)
           #(
             session,
             model,
@@ -112,17 +113,13 @@ pub fn update(
         }
         Error(_) -> #(
           session,
-          Model(
-            ..model,
-            board_state: Failed(error_text: "board could not be loaded :("),
-          ),
+          Model(state: BoardFailedToLoad(
+            error_text: "board could not be loaded :(",
+          )),
           effect.none(),
         )
       }
-    Model(
-      board_state: Loaded(canvas_handle: Unavailable, ..) as board_state,
-      ..,
-    ),
+    Model(state: BoardLoaded(canvas_handle: Unavailable, ..) as state),
       DomReturnedCanvas(canvas:, ctx:)
     -> {
       let navigation_effects = [
@@ -141,30 +138,26 @@ pub fn update(
         pointer.listen_wheel(WheelChanged),
       ]
 
-      let board_state =
-        Loaded(..board_state, canvas_handle: Cached(canvas:, ctx:))
-      let model = Model(..model, board_state:)
-      #(session, model, navigation_effects |> effect.batch)
+      let state = BoardLoaded(..state, canvas_handle: Cached(canvas:, ctx:))
+      let model = Model(state:)
+      #(session, model, effect.batch(navigation_effects))
     }
-    Model(socket_state: Connecting, ..),
-      WebSocketEvent(websocket.Opened(socket))
-    -> {
+    Model(state: SocketConnecting), WebSocketEvent(websocket.Opened(socket)) -> {
       #(
         session,
-        Model(..model, socket_state: Connected(socket:, user_count: None)),
-        effect.none(),
+        Model(state: Initializing(socket:, user_count: None, updates: [])),
+        fetch_snapshot(),
       )
     }
 
     Model(
-      board_state: Loaded(
+      state: BoardLoaded(
         tile_placement: TilePlacementIdle,
         pan_state: Idle,
         board:,
         camera:,
         ..,
-      ) as board_state,
-      ..,
+      ) as state,
     ),
       PrimaryPointerPressedDown(event)
     -> {
@@ -173,8 +166,8 @@ pub fn update(
       case tile {
         Ok(tile) -> {
           let tile_placement = Pressed(tile:)
-          let board_state = Loaded(..board_state, tile_placement:)
-          let model = Model(..model, board_state:)
+          let state = BoardLoaded(..state, tile_placement:)
+          let model = Model(state:)
           #(session, model, effect.none())
         }
         _ -> #(session, model, effect.none())
@@ -182,14 +175,14 @@ pub fn update(
     }
 
     Model(
-      board_state: Loaded(
+      state: BoardLoaded(
         pan_state: Idle,
         tile_placement: Pressed(tile: pressed_tile),
         board:,
         camera:,
+        socket:,
         ..,
-      ) as board_state,
-      socket_state: Connected(socket:, ..),
+      ) as state,
     ),
       PrimaryPointerReleased(event)
     -> {
@@ -209,61 +202,56 @@ pub fn update(
         _ -> effect.none()
       }
 
-      let board_state = Loaded(..board_state, tile_placement: TilePlacementIdle)
-      let model = Model(..model, board_state:)
+      let state = BoardLoaded(..state, tile_placement: TilePlacementIdle)
+      let model = Model(state:)
       #(session, model, effect)
     }
 
-    Model(board_state: Loaded(..) as board_state, ..), SpaceChanged(is_down:) -> {
+    Model(state: BoardLoaded(..) as state), SpaceChanged(is_down:) -> {
       let pan_state = case is_down {
         True -> PanPrimed
         False -> Idle
       }
-      let board_state = Loaded(..board_state, pan_state:)
-      let model = Model(..model, board_state:)
+      let state = BoardLoaded(..state, pan_state:)
+      let model = Model(state:)
       #(session, model, effect.none())
     }
 
-    Model(board_state: Loaded(pan_state: PanPrimed, ..) as board_state, ..),
+    Model(state: BoardLoaded(pan_state: PanPrimed, ..) as state),
       PrimaryPointerPressedDown(event)
     -> {
       let last_pointer_position = Vec2(event.client_x, event.client_y)
       let pan_state = Panning(last_pointer_position:)
-      let board_state = Loaded(..board_state, pan_state:)
-      let model = Model(..model, board_state:)
+      let state = BoardLoaded(..state, pan_state:)
+      let model = Model(state:)
       #(session, model, effect.none())
     }
 
-    Model(board_state: Loaded(pan_state: Panning(..), ..) as board_state, ..),
+    Model(state: BoardLoaded(pan_state: Panning(..), ..) as state),
       PrimaryPointerReleased(_)
     -> {
-      let board_state = Loaded(..board_state, pan_state: PanPrimed)
-      let model = Model(..model, board_state:)
+      let state = BoardLoaded(..state, pan_state: PanPrimed)
+      let model = Model(state:)
       #(session, model, effect.none())
     }
 
-    Model(board_state: Loaded(camera:, ..) as board_state, ..),
-      PointerMoved(event)
-    -> {
+    Model(state: BoardLoaded(camera:, ..) as state), PointerMoved(event) -> {
       let pointer_position = Vec2(event.client_x, event.client_y)
-      let board_state = case board_state.pan_state {
+      let state = case state.pan_state {
         Panning(last_pointer_position:) -> {
           // order reversed since camera moves opposite to pan direction
           let delta = vec2.sub(last_pointer_position, pointer_position)
           let camera = camera.pan(camera, delta)
           let pan_state = Panning(last_pointer_position: pointer_position)
-          Loaded(..board_state, pan_state:, pointer_position:, camera:)
+          BoardLoaded(..state, pan_state:, pointer_position:, camera:)
         }
-        _ -> Loaded(..board_state, pointer_position:)
+        _ -> BoardLoaded(..state, pointer_position:)
       }
-      let model = Model(..model, board_state:)
+      let model = Model(state:)
       #(session, model, effect.none())
     }
 
-    Model(
-      board_state: Loaded(camera:, pointer_position:, ..) as board_state,
-      ..,
-    ),
+    Model(state: BoardLoaded(camera:, pointer_position:, ..) as state),
       WheelChanged(event)
     -> {
       let camera =
@@ -273,8 +261,8 @@ pub fn update(
           target: pointer_position,
         )
 
-      let board_state = Loaded(..board_state, camera:)
-      let model = Model(..model, board_state:)
+      let state = BoardLoaded(..state, camera:)
+      let model = Model(state:)
       #(session, model, effect.none())
     }
 
@@ -315,22 +303,24 @@ fn handle_server_message(
   message: ServerMessage,
 ) -> #(Model, Effect(Msg)) {
   case model, message {
-    Model(socket_state: Connected(..) as socket_state, ..),
-      transport.UserCountUpdated(count:)
-    -> {
-      let socket_state = Connected(..socket_state, user_count: Some(count))
-      let model = Model(..model, socket_state:)
+    Model(state: Initializing(..) as state), transport.UserCountUpdated(count:) -> {
+      let state = Initializing(..state, user_count: Some(count))
+      let model = Model(state:)
+      #(model, effect.none())
+    }
+    Model(state: BoardLoaded(..) as state), transport.UserCountUpdated(count:) -> {
+      let state = BoardLoaded(..state, user_count: Some(count))
+      let model = Model(state:)
       #(model, effect.none())
     }
     Model(
-      board_state: Loaded(board:, canvas_handle: Cached(ctx:, ..), ..) as board_state,
-      ..,
+      state: BoardLoaded(board:, canvas_handle: Cached(ctx:, ..), ..) as state,
     ),
       transport.TileUpdate(x:, y:, color:)
     -> {
       let board = board.update_board(board, x, y, color)
-      let board_state = Loaded(..board_state, board:)
-      let model = Model(..model, board_state:)
+      let state = BoardLoaded(..state, board:)
+      let model = Model(state:)
       let effect = board.draw_board(board, ctx)
       #(model, effect)
     }
@@ -348,14 +338,14 @@ fn send_client_message(
 }
 
 pub fn view(model: Model) -> Element(Msg) {
-  case model.board_state {
-    Loading -> html.text("waiting...")
-    Loaded(board:, camera:, pointer_position:, pan_state:, ..) ->
+  case model.state {
+    BoardLoaded(board:, camera:, pointer_position:, pan_state:, user_count:, ..) ->
       html.div([], [
-        hud_view(board, camera, pointer_position, model.socket_state),
+        hud_view(board, camera, pointer_position, user_count),
         canvas_view(camera, pan_state),
       ])
-    Failed(error_text:) -> html.text(error_text)
+    BoardFailedToLoad(error_text:) -> html.text(error_text)
+    _ -> html.text("waiting...")
   }
 }
 
@@ -363,12 +353,12 @@ fn hud_view(
   board: Board,
   camera: Camera,
   pointer_position: Vec2,
-  socket_state: SocketState,
+  user_count: Option(Int),
 ) -> Element(Msg) {
   html.div([], [
     pointer_world_view(board, camera, pointer_position),
-    case socket_state {
-      Connected(user_count: Some(user_count), ..) -> user_count_view(user_count)
+    case user_count {
+      Some(user_count) -> user_count_view(user_count)
       _ -> element.none()
     },
   ])
