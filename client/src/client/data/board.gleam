@@ -1,3 +1,6 @@
+import client/data/vec2.{type Vec2}
+import gleam/float
+import gleam/list
 import gleam/option.{type Option, Some}
 import lustre/effect.{type Effect}
 import shared/snapshot.{type Snapshot, Snapshot}
@@ -11,16 +14,37 @@ pub fn from_snapshot(snapshot: Snapshot) -> Board {
   Board(colors:, width:, height:)
 }
 
-//TODO: make opaque
-pub type Tile {
-  Tile(x: Int, y: Int)
+pub opaque type Tile {
+  Tile(position: Position, color: Int)
 }
 
-pub fn new_tile(board: Board, x: Int, y: Int) -> Result(Tile, Nil) {
+pub fn new_tile(board: Board, x: Int, y: Int, color: Int) -> Result(Tile, Nil) {
   case x >= 0 && x < board.width && y >= 0 && y < board.height {
-    True -> Ok(Tile(x:, y:))
+    True -> {
+      let position = Position(x:, y:)
+      Ok(Tile(position:, color:))
+    }
     False -> Error(Nil)
   }
+}
+
+pub type Position {
+  Position(x: Int, y: Int)
+}
+
+pub fn new_position(board: Board, position: Vec2) -> Result(Position, Nil) {
+  // flooring is necessary to avoid something like -0.3 being truncated to 0
+  let x = float.floor(position.x) |> float.truncate
+  let y = float.floor(position.y) |> float.truncate
+
+  case x >= 0 && x < board.width && y >= 0 && y < board.height {
+    True -> Ok(Position(x:, y:))
+    False -> Error(Nil)
+  }
+}
+
+pub fn position_to_tuple(position: Position) -> #(Int, Int) {
+  #(position.x, position.y)
 }
 
 pub fn update_board(board: Board, x: Int, y: Int, color: Int) -> Board {
@@ -28,6 +52,27 @@ pub fn update_board(board: Board, x: Int, y: Int, color: Int) -> Board {
     do_update_board(board.colors, board.width, board.height, x, y, color)
   Board(..board, colors:)
 }
+
+pub fn batch_updates(board: Board, tiles: List(Tile)) -> Board {
+  let colors =
+    do_batch_updates(
+      board.colors,
+      board.width,
+      board.height,
+      list.map(tiles, fn(tile) {
+        #(tile.position.x, tile.position.y, tile.color)
+      }),
+    )
+  Board(..board, colors:)
+}
+
+@external(javascript, "./board_ffi.mjs", "batchUpdates")
+fn do_batch_updates(
+  colors: BitArray,
+  width: Int,
+  height: Int,
+  tiles: List(#(Int, Int, Int)),
+) -> BitArray
 
 @external(javascript, "./board_ffi.mjs", "updateBoard")
 fn do_update_board(

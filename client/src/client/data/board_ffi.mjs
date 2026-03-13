@@ -1,4 +1,4 @@
-import { BitArray$BitArray } from "../../gleam.mjs"
+import { BitArray$BitArray, List$NonEmpty$first, List$NonEmpty$rest, List$isNonEmpty, List } from "../../gleam.mjs"
 
 /**
  * @param {string} canvas_id
@@ -28,6 +28,41 @@ export function setDimensions(canvas, width, height) {
  * @param {BitArray$BitArray} colors 
  * @param {number} width 
  * @param {number} height 
+ * @param {List<[number, number, number]>} tiles 
+ */
+export function batchUpdates(colors, width, height, tiles) {
+  /** @type {Uint8Array} */
+  // TODO: rawBuffer is unstable, change when gleam 1.15 is released
+  const colorPairs = colors.rawBuffer
+  let newColorPairs = new Uint8Array(colorPairs)
+
+  while (List$isNonEmpty(tiles)) {
+    const tile = List$NonEmpty$first(tiles)
+    
+    const [x, y, color] = tile
+
+    const tileIndex = y * width + x
+    // same as Math.trunc(tileIndex / 2) when tileIndex is a 32 bit int
+    const arrayIndex = tileIndex >> 1;
+    // + 1 because high nibble is rendered before low nibble
+    // for example, tiles 4 and 5 are stored as 0b44445555
+    const bitOffset = ((tileIndex + 1) % 2) * 4
+
+    const pair = newColorPairs[arrayIndex]
+    const newPair = (pair & ~(0b1111 << bitOffset)) | ((color & 0b1111) << bitOffset)
+    newColorPairs[arrayIndex] = newPair
+
+    tiles = List$NonEmpty$rest(tiles)
+  }
+
+  return BitArray$BitArray(newColorPairs)
+}
+
+/**
+ * 
+ * @param {BitArray$BitArray} colors 
+ * @param {number} width 
+ * @param {number} height 
  * @param {number} x 
  * @param {number} y 
  * @param {number} color 
@@ -43,15 +78,9 @@ export function updateBoard(colors, width, height, x, y, color) {
   // for example, tiles 4 and 5 are stored as 0b44445555
   const bitOffset = ((tileIndex + 1) % 2) * 4
 
-  // console.log(x, y, color)
-  // console.log(tileIndex, arrayIndex, bitOffset)
-
   const pair = colorPairs[arrayIndex]
-
   const newPair = (pair & ~(0b1111 << bitOffset)) | ((color & 0b1111) << bitOffset)
 
-  // console.log(pair.toString(2).padStart(8, "0"), newPair.toString(2).padStart(8, "0"))
-  
   let newColorPairs = new Uint8Array(colorPairs)
   newColorPairs[arrayIndex] = newPair
   return BitArray$BitArray(newColorPairs)

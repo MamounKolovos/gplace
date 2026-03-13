@@ -9,6 +9,7 @@ import client/session.{type Session}
 import gleam/float
 import gleam/int
 import gleam/json
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import lustre/attribute
 import lustre/effect.{type Effect}
@@ -50,7 +51,7 @@ pub type TileUpdate {
 
 pub type TilePlacementState {
   TilePlacementIdle
-  Pressed(tile: board.Tile)
+  Pressed(position: board.Position)
 }
 
 pub type CanvasHandle {
@@ -93,6 +94,15 @@ pub fn update(
       case result {
         Ok(snapshot) -> {
           let board = board.from_snapshot(snapshot)
+
+          let tiles =
+            list.filter_map(updates, fn(update) {
+              let TileUpdate(x:, y:, color:) = update
+              board.new_tile(board, x, y, color)
+            })
+
+          let board = board.batch_updates(board, tiles)
+
           let state =
             BoardLoaded(
               board:,
@@ -161,11 +171,12 @@ pub fn update(
     ),
       PrimaryPointerPressedDown(event)
     -> {
-      let tile =
-        Vec2(event.client_x, event.client_y) |> screen_to_tile(board, camera)
-      case tile {
-        Ok(tile) -> {
-          let tile_placement = Pressed(tile:)
+      let position =
+        Vec2(event.client_x, event.client_y)
+        |> screen_to_board_space(board, camera)
+      case position {
+        Ok(position) -> {
+          let tile_placement = Pressed(position:)
           let state = BoardLoaded(..state, tile_placement:)
           let model = Model(state:)
           #(session, model, effect.none())
@@ -177,7 +188,7 @@ pub fn update(
     Model(
       state: BoardLoaded(
         pan_state: Idle,
-        tile_placement: Pressed(tile: pressed_tile),
+        tile_placement: Pressed(position: pressed_position),
         board:,
         camera:,
         socket:,
@@ -186,17 +197,14 @@ pub fn update(
     ),
       PrimaryPointerReleased(event)
     -> {
-      let released_tile =
-        Vec2(event.client_x, event.client_y) |> screen_to_tile(board, camera)
+      let released_position =
+        Vec2(event.client_x, event.client_y)
+        |> screen_to_board_space(board, camera)
 
-      let effect = case released_tile {
-        Ok(released_tile) if pressed_tile == released_tile -> {
-          let message =
-            transport.TileChanged(
-              x: released_tile.x,
-              y: released_tile.y,
-              color: 5,
-            )
+      let effect = case released_position {
+        Ok(released_position) if pressed_position == released_position -> {
+          let #(x, y) = board.position_to_tuple(released_position)
+          let message = transport.TileChanged(x:, y:, color: 5)
           send_client_message(socket, message)
         }
         _ -> effect.none()
@@ -285,17 +293,13 @@ fn fetch_snapshot() -> Effect(Msg) {
   rsvp.get("/api/board", handler)
 }
 
-fn screen_to_tile(
+fn screen_to_board_space(
   position: Vec2,
   board: Board,
   camera: Camera,
-) -> Result(board.Tile, Nil) {
+) -> Result(board.Position, Nil) {
   let world_position = camera.from_screen(camera, position)
-
-  let x = float.truncate(world_position.x)
-  let y = float.truncate(world_position.y)
-
-  board.new_tile(board, x, y)
+  board.new_position(board, world_position)
 }
 
 fn handle_server_message(
@@ -310,6 +314,14 @@ fn handle_server_message(
     }
     Model(state: BoardLoaded(..) as state), transport.UserCountUpdated(count:) -> {
       let state = BoardLoaded(..state, user_count: Some(count))
+      let model = Model(state:)
+      #(model, effect.none())
+    }
+    Model(state: Initializing(updates:, ..) as state),
+      transport.TileUpdate(x:, y:, color:)
+    -> {
+      let state =
+        Initializing(..state, updates: [TileUpdate(x:, y:, color:), ..updates])
       let model = Model(state:)
       #(model, effect.none())
     }
@@ -369,10 +381,13 @@ fn pointer_world_view(
   camera: Camera,
   pointer_position: Vec2,
 ) -> Element(Msg) {
-  let tile = screen_to_tile(pointer_position, board, camera)
+  let position = screen_to_board_space(pointer_position, board, camera)
 
-  let #(x, y) = case tile {
-    Ok(tile) -> #(int.to_string(tile.x), int.to_string(tile.y))
+  let #(x, y) = case position {
+    Ok(position) -> {
+      let #(x, y) = board.position_to_tuple(position)
+      #(int.to_string(x), int.to_string(y))
+    }
     Error(Nil) -> #("-", "-")
   }
 
