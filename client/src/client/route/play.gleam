@@ -298,8 +298,9 @@ fn screen_to_board_space(
   board: Board,
   camera: Camera,
 ) -> Result(board.Position, Nil) {
-  let world_position = camera.from_screen(camera, position)
-  board.new_position(board, world_position)
+  camera.screen_to_world(camera, position)
+  |> camera.world_to_vec
+  |> board.new_position(board, _)
 }
 
 fn handle_server_message(
