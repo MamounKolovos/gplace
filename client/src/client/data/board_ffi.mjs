@@ -67,7 +67,7 @@ export function batchUpdates(colors, width, height, tiles) {
  * @param {number} y 
  * @param {number} color 
  */
-export function updateBoard(colors, width, height, x, y, color) {
+export function update(colors, width, height, x, y, color) {
   /** @type {Uint8Array} */
   // TODO: rawBuffer is unstable, change when gleam 1.15 is released
   const colorPairs = colors.rawBuffer
@@ -92,7 +92,7 @@ export function updateBoard(colors, width, height, x, y, color) {
  * @param {number} width
  * @param {number} height
  */
-export function drawBoard(ctx, colors, width, height) {
+export function draw(ctx, colors, width, height) {
   /** 
    * [hhhhllll, hhhhllll, ...]
    * @type {Uint8Array}

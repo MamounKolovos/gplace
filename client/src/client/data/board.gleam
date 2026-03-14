@@ -45,9 +45,8 @@ pub fn position_to_tuple(position: Position) -> #(Int, Int) {
   #(position.x, position.y)
 }
 
-pub fn update_board(board: Board, x: Int, y: Int, color: Int) -> Board {
-  let colors =
-    do_update_board(board.colors, board.width, board.height, x, y, color)
+pub fn update(board: Board, x: Int, y: Int, color: Int) -> Board {
+  let colors = do_update(board.colors, board.width, board.height, x, y, color)
   Board(..board, colors:)
 }
 
@@ -72,8 +71,8 @@ fn do_batch_updates(
   tiles: List(#(Int, Int, Int)),
 ) -> BitArray
 
-@external(javascript, "./board_ffi.mjs", "updateBoard")
-fn do_update_board(
+@external(javascript, "./board_ffi.mjs", "update")
+fn do_update(
   colors: BitArray,
   width: Int,
   height: Int,
@@ -82,7 +81,7 @@ fn do_update_board(
   color: Int,
 ) -> BitArray
 
-pub fn init_board(
+pub fn init(
   board: Board,
   canvas: Option(Canvas),
   ctx: Option(Context),
@@ -100,19 +99,19 @@ pub fn init_board(
   }
 
   do_set_dimensions(canvas, board.width, board.height)
-  do_draw_board(ctx, board.colors, board.width, board.height)
+  do_draw(ctx, board.colors, board.width, board.height)
 }
 
-pub fn draw_board(board: Board, ctx: Context) -> Effect(msg) {
+pub fn draw(board: Board, ctx: Context) -> Effect(msg) {
   use _ <- effect.from()
 
-  do_draw_board(ctx, board.colors, board.width, board.height)
+  do_draw(ctx, board.colors, board.width, board.height)
 }
 
 /// passing in primitives instead of the board type directly is easier
 /// since i dont have to deal with the custom type in js
-@external(javascript, "./board_ffi.mjs", "drawBoard")
-fn do_draw_board(ctx: Context, colors: BitArray, width: Int, height: Int) -> Nil
+@external(javascript, "./board_ffi.mjs", "draw")
+fn do_draw(ctx: Context, colors: BitArray, width: Int, height: Int) -> Nil
 
 @external(javascript, "./board_ffi.mjs", "setDimensions")
 fn do_set_dimensions(canvas: Canvas, width: Int, height: Int) -> Nil

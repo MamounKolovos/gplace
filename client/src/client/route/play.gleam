@@ -115,11 +115,7 @@ pub fn update(
               user_count:,
             )
           let model = Model(state:)
-          #(
-            session,
-            model,
-            board.init_board(board, None, None, DomReturnedCanvas),
-          )
+          #(session, model, board.init(board, None, None, DomReturnedCanvas))
         }
         Error(_) -> #(
           session,
@@ -331,10 +327,10 @@ fn handle_server_message(
     ),
       transport.TileUpdate(x:, y:, color:)
     -> {
-      let board = board.update_board(board, x, y, color)
+      let board = board.update(board, x, y, color)
       let state = BoardLoaded(..state, board:)
       let model = Model(state:)
-      let effect = board.draw_board(board, ctx)
+      let effect = board.draw(board, ctx)
       #(model, effect)
     }
     _, _ -> #(model, effect.none())
