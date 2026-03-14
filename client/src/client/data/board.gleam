@@ -3,14 +3,12 @@ import gleam/float
 import gleam/list
 import gleam/option.{type Option, Some}
 import lustre/effect.{type Effect}
-import shared/snapshot.{type Snapshot, Snapshot}
 
 pub opaque type Board {
   Board(colors: BitArray, width: Int, height: Int)
 }
 
-pub fn from_snapshot(snapshot: Snapshot) -> Board {
-  let Snapshot(colors:, width:, height:) = snapshot
+pub fn new(colors: BitArray, width: Int, height: Int) -> Board {
   Board(colors:, width:, height:)
 }
 

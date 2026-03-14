@@ -16,7 +16,7 @@ import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
 import rsvp
-import shared/snapshot.{type Snapshot}
+import shared/snapshot.{type Snapshot, Snapshot}
 import shared/transport.{type ServerMessage}
 
 pub type Model {
@@ -92,8 +92,8 @@ pub fn update(
       ApiReturnedSnapshot(result)
     ->
       case result {
-        Ok(snapshot) -> {
-          let board = board.from_snapshot(snapshot)
+        Ok(Snapshot(colors:, width:, height:)) -> {
+          let board = board.new(colors, width, height)
 
           let tiles =
             list.filter_map(updates, fn(update) {
