@@ -133,10 +133,7 @@ fn handle_websocket_message(
     // sent by client
     mist.Text(message) ->
       case json.parse(message, transport.client_message_decoder()) {
-        Ok(message) -> {
-          let state = handle_client_message(state, message)
-          mist.continue(state)
-        }
+        Ok(message) -> handle_client_message(state, message)
         Error(_) -> {
           wisp.log_error("failed to parse client message")
           mist.stop()
@@ -165,14 +162,17 @@ fn handle_websocket_message(
 fn handle_client_message(
   state: WebSocketState,
   message: ClientMessage,
-) -> WebSocketState {
+) -> mist.Next(WebSocketState, WebSocketMessage) {
   case message {
     transport.TileChanged(x:, y:, color:) -> {
       // authoritative server, ideally client should never send messages for out of bounds tiles
-      let assert Ok(_) = board.set_tile(state.board, x: x, y: y, color: color)
-
-      process.send(state.broker, TileChanged(x:, y:, color:))
-      state
+      case board.set_tile(state.board, x: x, y: y, color: color) {
+        Ok(_) -> {
+          process.send(state.broker, TileChanged(x:, y:, color:))
+          mist.continue(state)
+        }
+        Error(_) -> mist.stop()
+      }
     }
   }
 }
