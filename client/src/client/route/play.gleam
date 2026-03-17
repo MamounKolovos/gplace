@@ -1,5 +1,6 @@
 import client/data/board.{type Board}
 import client/data/camera.{type Camera}
+import client/data/engine
 import client/data/keyboard
 import client/data/pointer
 import client/data/vec2.{type Vec2, Vec2}
@@ -54,6 +55,7 @@ pub type TilePlacementState {
   Pressed(position: board.Position)
 }
 
+//TODO: add this to initializaing maybe?
 pub type CanvasHandle {
   Unavailable
   Cached(canvas: board.Canvas, ctx: board.Context)
@@ -74,6 +76,7 @@ pub type Msg {
   PrimaryPointerPressedDown(pointer.ButtonEvent)
   PrimaryPointerReleased(pointer.ButtonEvent)
   PointerMoved(pointer.MotionEvent)
+  FrameTicked(dt: Float)
 }
 
 pub fn init() -> #(Model, Effect(Msg)) {
@@ -115,7 +118,12 @@ pub fn update(
               user_count:,
             )
           let model = Model(state:)
-          #(session, model, board.init(board, None, None, DomReturnedCanvas))
+          let effect =
+            effect.batch([
+              board.init(board, None, None, DomReturnedCanvas),
+              engine.start(FrameTicked),
+            ])
+          #(session, model, effect)
         }
         Error(_) -> #(
           session,
@@ -181,13 +189,18 @@ pub fn update(
       }
     }
 
+    Model(state: BoardLoaded(board:, camera:, ..) as state), FrameTicked(dt:) -> {
+      let camera = camera.update(camera, dt)
+      let state = BoardLoaded(..state, camera:)
+      let model = Model(state:)
+      #(session, model, effect.none())
+    }
     Model(
       state: BoardLoaded(
         pan_state: Idle,
         tile_placement: Pressed(position: pressed_position),
         board:,
         camera:,
-        socket:,
         ..,
       ) as state,
     ),
@@ -197,18 +210,40 @@ pub fn update(
         Vec2(event.client_x, event.client_y)
         |> screen_to_board_space(board, camera)
 
-      let effect = case released_position {
+      let camera = case released_position {
         Ok(released_position) if pressed_position == released_position -> {
-          let #(x, y) = board.position_to_tuple(released_position)
-          let message = transport.TileChanged(x:, y:, color: 5)
-          send_client_message(socket, message)
+          let target_position = board_to_world_space(released_position)
+          let target_zoom = 50.0
+          camera.start_tile_focus_animation(
+            camera,
+            duration: 1.5,
+            target_position: target_position,
+            target_zoom: target_zoom,
+          )
         }
-        _ -> effect.none()
+        _ -> camera
       }
 
-      let state = BoardLoaded(..state, tile_placement: TilePlacementIdle)
+      let state =
+        BoardLoaded(..state, camera:, tile_placement: TilePlacementIdle)
       let model = Model(state:)
-      #(session, model, effect)
+      #(session, model, effect.none())
+      // let released_position =
+      //   Vec2(event.client_x, event.client_y)
+      //   |> screen_to_board_space(board, camera)
+
+      // let effect = case released_position {
+      //   Ok(released_position) if pressed_position == released_position -> {
+      //     let #(x, y) = board.position_to_tuple(released_position)
+      //     let message = transport.TileChanged(x:, y:, color: 5)
+      //     send_client_message(socket, message)
+      //   }
+      //   _ -> effect.none()
+      // }
+
+      // let state = BoardLoaded(..state, tile_placement: TilePlacementIdle)
+      // let model = Model(state:)
+      // #(session, model, effect)
     }
 
     Model(state: BoardLoaded(..) as state), SpaceChanged(is_down:) -> {
@@ -287,6 +322,11 @@ pub fn update(
 fn fetch_snapshot() -> Effect(Msg) {
   let handler = network.expect_json(snapshot.decoder(), ApiReturnedSnapshot)
   rsvp.get("/api/board", handler)
+}
+
+fn board_to_world_space(position: board.Position) -> camera.Position {
+  board.position_to_vec(position)
+  |> camera.position_from_vec
 }
 
 fn screen_to_board_space(

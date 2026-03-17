@@ -1,5 +1,6 @@
-import client/data/vec2.{type Vec2}
+import client/data/vec2.{type Vec2, Vec2}
 import gleam/float
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, Some}
 import lustre/effect.{type Effect}
@@ -26,7 +27,7 @@ pub fn new_tile(board: Board, x: Int, y: Int, color: Int) -> Result(Tile, Nil) {
   }
 }
 
-pub type Position {
+pub opaque type Position {
   Position(x: Int, y: Int)
 }
 
@@ -43,6 +44,10 @@ pub fn new_position(board: Board, position: Vec2) -> Result(Position, Nil) {
 
 pub fn position_to_tuple(position: Position) -> #(Int, Int) {
   #(position.x, position.y)
+}
+
+pub fn position_to_vec(position: Position) -> Vec2 {
+  Vec2(x: int.to_float(position.x), y: int.to_float(position.y))
 }
 
 pub fn update(board: Board, x: Int, y: Int, color: Int) -> Board {

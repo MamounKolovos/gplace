@@ -29,3 +29,7 @@ pub fn clamp(a: Vec2, min min: Vec2, max max: Vec2) -> Vec2 {
   let y = float.clamp(a.y, min: min.y, max: max.y)
   Vec2(x:, y:)
 }
+
+pub fn lerp(progress: Float, start: Vec2, end: Vec2) -> Vec2 {
+  add(start, mul(sub(end, start), progress))
+}
