@@ -7,6 +7,7 @@ import client/data/vec2.{type Vec2, Vec2}
 import client/data/websocket.{type WebSocket}
 import client/network
 import client/session.{type Session}
+import gleam/bool
 import gleam/float
 import gleam/int
 import gleam/json
@@ -293,6 +294,12 @@ pub fn update(
     Model(state: BoardLoaded(camera:, pointer_position:, ..) as state),
       WheelChanged(event)
     -> {
+      use <- bool.guard(camera.is_animation_active(camera), return: #(
+        session,
+        model,
+        effect.none(),
+      ))
+
       let camera =
         camera.zoom_by(
           camera,

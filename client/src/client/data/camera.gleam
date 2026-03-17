@@ -37,6 +37,13 @@ type TileFocusAnimation {
   )
 }
 
+pub fn is_animation_active(camera: Camera) -> Bool {
+  case camera.tile_focus_animation {
+    Inactive -> False
+    Active(..) -> True
+  }
+}
+
 ///TODO: rename to zoom_to
 pub fn start_tile_focus_animation(
   camera: Camera,
