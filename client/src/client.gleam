@@ -19,18 +19,18 @@ pub fn main() -> Nil {
   Nil
 }
 
-type Model {
+pub type Model {
   Model(session: Session, route: Route, page: Page)
 }
 
-type Page {
+pub type Page {
   Signup(signup.Model)
   Login(login.Model)
   Profile(profile.Model)
   Play(play.Model)
 }
 
-type Msg {
+pub type Msg {
   UserNavigatedTo(route: Route)
   SignupMsg(signup.Msg)
   LoginMsg(login.Msg)
@@ -39,7 +39,7 @@ type Msg {
   SessionValidated(Result(User, network.Error))
 }
 
-fn init(_args) -> #(Model, Effect(Msg)) {
+pub fn init(_args) -> #(Model, Effect(Msg)) {
   let route = route.initial_route()
   let is_protected = route.is_protected(route)
 
@@ -86,7 +86,7 @@ fn load_route(route: Route) -> #(Page, Effect(Msg)) {
   }
 }
 
-fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
+pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   case model, msg {
     model, UserNavigatedTo(route) -> {
       use <- bool.guard(model.route == route, return: #(model, effect.none()))
@@ -170,7 +170,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   }
 }
 
-fn view(model: Model) -> Element(Msg) {
+pub fn view(model: Model) -> Element(Msg) {
   case model {
     Model(session: _, route: route.Signup, page: Signup(model)) ->
       signup.view(model) |> element.map(SignupMsg)

@@ -1,0 +1,7 @@
+---
+version: 1.5.4
+title: Profile after signup
+file: ./test/client_test.gleam
+test_name: user_signup_test
+---
+username: example

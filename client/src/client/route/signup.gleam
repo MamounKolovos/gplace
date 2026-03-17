@@ -167,6 +167,7 @@ fn signup_view(model: Model) -> Element(Msg) {
       html.form(
         [
           attribute.id("signup-form"),
+          attribute.data("test-id", "signup-form"),
           // prevents default submission and collects field values
           event.on_submit(fn(fields) {
             model.form
