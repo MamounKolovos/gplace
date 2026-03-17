@@ -190,11 +190,16 @@ pub fn update(
       }
     }
 
-    Model(state: BoardLoaded(board:, camera:, ..) as state), FrameTicked(dt:) -> {
+    Model(
+      state: BoardLoaded(board:, camera:, canvas_handle: Cached(ctx:, ..), ..) as state,
+    ),
+      FrameTicked(dt:)
+    -> {
       let camera = camera.update(camera, dt)
       let state = BoardLoaded(..state, camera:)
       let model = Model(state:)
-      #(session, model, effect.none())
+      let effect = board.draw(board, ctx)
+      #(session, model, effect)
     }
     Model(
       state: BoardLoaded(
@@ -369,16 +374,13 @@ fn handle_server_message(
       let model = Model(state:)
       #(model, effect.none())
     }
-    Model(
-      state: BoardLoaded(board:, canvas_handle: Cached(ctx:, ..), ..) as state,
-    ),
+    Model(state: BoardLoaded(board:, ..) as state),
       transport.TileUpdate(x:, y:, color:)
     -> {
       let board = board.update(board, x, y, color)
       let state = BoardLoaded(..state, board:)
       let model = Model(state:)
-      let effect = board.draw(board, ctx)
-      #(model, effect)
+      #(model, effect.none())
     }
     _, _ -> #(model, effect.none())
   }
