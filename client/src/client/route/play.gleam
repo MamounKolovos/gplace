@@ -437,6 +437,10 @@ fn pointer_world_view(
     Error(Nil) -> #("-", "-")
   }
 
+  let zoom = { camera.zoom(camera) |> float.truncate |> int.to_string } <> "x"
+
+  let text = "(" <> x <> ", " <> y <> ")" <> " " <> zoom
+
   html.div(
     [
       attribute.class(
@@ -449,7 +453,7 @@ fn pointer_world_view(
       ),
     ],
     [
-      html.text("(" <> x <> ", " <> y <> ")"),
+      html.text(text),
     ],
   )
 }
