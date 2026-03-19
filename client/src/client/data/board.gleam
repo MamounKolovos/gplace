@@ -42,6 +42,20 @@ pub fn new_position(board: Board, position: Vec2) -> Result(Position, Nil) {
   }
 }
 
+pub fn snap_position(board: Board, position: Vec2) -> Position {
+  // flooring is necessary to avoid something like -0.3 being truncated to 0
+  let x =
+    float.floor(position.x)
+    |> float.truncate
+    |> int.clamp(min: 0, max: board.width - 1)
+  let y =
+    float.floor(position.y)
+    |> float.truncate
+    |> int.clamp(min: 0, max: board.height - 1)
+
+  Position(x:, y:)
+}
+
 pub fn position_to_tuple(position: Position) -> #(Int, Int) {
   #(position.x, position.y)
 }

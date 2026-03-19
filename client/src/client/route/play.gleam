@@ -338,7 +338,7 @@ fn fetch_snapshot() -> Effect(Msg) {
 
 fn board_to_world_space(position: board.Position) -> camera.Position {
   board.position_to_vec(position)
-  |> camera.position_from_vec
+  |> camera.vec_to_world
 }
 
 fn screen_to_board_space(
@@ -349,6 +349,16 @@ fn screen_to_board_space(
   camera.screen_to_world(camera, position)
   |> camera.world_to_vec
   |> board.new_position(board, _)
+}
+
+/// screen -> world -> board -> world -> screen
+fn snap_to_board_space(position: Vec2, board: Board, camera: Camera) -> Vec2 {
+  camera.screen_to_world(camera, position)
+  |> camera.world_to_vec
+  |> board.snap_position(board, _)
+  |> board.position_to_vec
+  |> camera.vec_to_world
+  |> camera.world_to_screen(camera, _)
 }
 
 fn handle_server_message(
@@ -414,12 +424,48 @@ fn hud_view(
   user_count: Option(Int),
 ) -> Element(Msg) {
   html.div([], [
+    // too zoomed out to see so no point rendering it
+    case camera.zoom(camera) >. 10.0 {
+      True -> tile_snapper_view(board, camera, pointer_position)
+      False -> element.none()
+    },
     pointer_world_view(board, camera, pointer_position),
     case user_count {
       Some(user_count) -> user_count_view(user_count)
       _ -> element.none()
     },
   ])
+}
+
+fn tile_snapper_view(
+  board: Board,
+  camera: Camera,
+  pointer_position: Vec2,
+) -> Element(Msg) {
+  let position = snap_to_board_space(pointer_position, board, camera)
+
+  html.div(
+    [
+      attribute.class(
+        "fixed "
+        <> css_size_px(camera.max_zoom, camera.max_zoom)
+        <> " pointer-events-none z-50
+        outline-3 outline-black",
+      ),
+      attribute.style("transform-origin", "0 0"),
+      attribute.style(
+        "transform",
+        css_translate(position) <> css_scale(camera.zoom(camera) /. 100.0),
+      ),
+    ],
+    [],
+  )
+}
+
+fn css_size_px(width: Int, height: Int) -> String {
+  let width = "w-[" <> int.to_string(width) <> "px]"
+  let height = "h-[" <> int.to_string(height) <> "px]"
+  width <> " " <> height
 }
 
 fn pointer_world_view(
@@ -434,7 +480,7 @@ fn pointer_world_view(
       let #(x, y) = board.position_to_tuple(position)
       #(int.to_string(x), int.to_string(y))
     }
-    Error(Nil) -> #("-", "-")
+    Error(_) -> #("-", "-")
   }
 
   let zoom = { camera.zoom(camera) |> float.truncate |> int.to_string } <> "x"

@@ -9,6 +9,8 @@ const min_log_zoom = 0.0
 // ln(100)
 const max_log_zoom = 4.60517
 
+pub const max_zoom = 100
+
 pub opaque type Camera {
   Camera(
     position: Position,
@@ -120,7 +122,7 @@ pub opaque type Position {
   Position(vec: Vec2)
 }
 
-pub fn position_from_vec(vec: Vec2) -> Position {
+pub fn vec_to_world(vec: Vec2) -> Position {
   Position(vec:)
 }
 
@@ -173,4 +175,8 @@ pub fn screen_to_world(camera: Camera, position: Vec2) -> Position {
 
 pub fn to_screen(camera: Camera) -> Vec2 {
   vec2.mul(camera.position.vec, camera.zoom)
+}
+
+pub fn world_to_screen(camera: Camera, position: Position) -> Vec2 {
+  vec2.mul(vec2.sub(position.vec, camera.position.vec), camera.zoom)
 }
