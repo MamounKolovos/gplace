@@ -37,7 +37,7 @@ CREATE FUNCTION public.update_updated_at() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 begin
-  new.updated_at = now() at time zone 'utc';
+  new.updated_at = NOW() at time zone 'utc';
   return new;
 end
 $$;
@@ -46,6 +46,19 @@ $$;
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
+
+--
+-- Name: board; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.board (
+    x integer NOT NULL,
+    y integer NOT NULL,
+    color integer NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_by integer
+);
+
 
 --
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
@@ -112,6 +125,14 @@ ALTER TABLE public.users ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
+-- Name: board board_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.board
+    ADD CONSTRAINT board_pkey PRIMARY KEY (x, y);
+
+
+--
 -- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -167,10 +188,25 @@ CREATE INDEX sessions_user_id_idx ON public.sessions USING btree (user_id);
 
 
 --
+-- Name: board board_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER board_updated_at BEFORE UPDATE OF color, updated_by ON public.board FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+
+--
 -- Name: users users_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+
+--
+-- Name: board board_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.board
+    ADD CONSTRAINT board_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
@@ -196,4 +232,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20260130021931'),
     ('20260130040157'),
     ('20260130042327'),
-    ('20260130211710');
+    ('20260130211710'),
+    ('20260319212640');
