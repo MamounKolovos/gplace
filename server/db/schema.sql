@@ -61,6 +61,34 @@ CREATE TABLE public.board (
 
 
 --
+-- Name: board_history; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.board_history (
+    id bigint NOT NULL,
+    x integer NOT NULL,
+    y integer NOT NULL,
+    color integer NOT NULL,
+    user_id integer,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: board_history_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.board_history ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.board_history_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -122,6 +150,14 @@ ALTER TABLE public.users ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     NO MAXVALUE
     CACHE 1
 );
+
+
+--
+-- Name: board_history board_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.board_history
+    ADD CONSTRAINT board_history_pkey PRIMARY KEY (id);
 
 
 --
@@ -202,6 +238,14 @@ CREATE TRIGGER users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECU
 
 
 --
+-- Name: board_history board_history_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.board_history
+    ADD CONSTRAINT board_history_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
 -- Name: board board_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -233,4 +277,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20260130040157'),
     ('20260130042327'),
     ('20260130211710'),
-    ('20260319212640');
+    ('20260319212640'),
+    ('20260320042714');
