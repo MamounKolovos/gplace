@@ -49,6 +49,34 @@ pub fn delete_session_by_token_hash(
   sql.delete_session_by_token_hash(db, token_hash) |> zero
 }
 
+pub fn init_board(
+  db: pog.Connection,
+  width width: Int,
+  height height: Int,
+  max_color max_color: Int,
+  initial_color initial_color: Int,
+) -> Result(Nil, Error) {
+  sql.init_board(db, width, height, max_color, initial_color) |> zero
+}
+
+pub fn set_tile(
+  db: pog.Connection,
+  x x: Int,
+  y y: Int,
+  color color: Int,
+  user_id user_id: Int,
+) -> Result(Nil, Error) {
+  sql.set_tile(db, x, y, color, user_id) |> zero
+}
+
+pub fn select_tile_info_by_xy(
+  db: pog.Connection,
+  x x: Int,
+  y y: Int,
+) -> Result(sql.SelectTileInfoByXyRow, Error) {
+  sql.select_tile_info_by_xy(db, x, y) |> one
+}
+
 fn one(
   query_result: Result(pog.Returned(row), pog.QueryError),
 ) -> Result(row, Error) {

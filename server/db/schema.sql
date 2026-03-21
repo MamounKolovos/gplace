@@ -30,6 +30,38 @@ COMMENT ON EXTENSION citext IS 'data type for case-insensitive character strings
 
 
 --
+-- Name: set_tile(integer, integer, integer, integer); Type: PROCEDURE; Schema: public; Owner: -
+--
+
+CREATE PROCEDURE public.set_tile(IN x_ integer, IN y_ integer, IN color_ integer, IN user_id_ integer)
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  width_ INTEGER;
+  height_ INTEGER;
+  max_color_ INTEGER;
+BEGIN
+    SELECT width, height, max_color INTO width_, height_, max_color_ FROM board_config;
+
+    IF color_ < 0 OR color_ > max_color_ THEN
+      RAISE EXCEPTION 'Expected: 0-%, got: %', max_color_, color_;
+    END IF;
+
+    IF x_ < 0 OR x_ >= width_ OR y_ < 0 OR y_ >= height_ THEN
+      RAISE EXCEPTION 'Coordinates out of bounds: (%, %)', x_, y_;
+    END IF;
+
+    UPDATE board
+    SET color = color_, updated_by = user_id_
+    WHERE x = x_ AND y = y_;
+
+    INSERT INTO board_history (x, y, color, user_id)
+    VALUES (x_, y_, color_, user_id_);
+END;
+$$;
+
+
+--
 -- Name: update_updated_at(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -57,6 +89,21 @@ CREATE TABLE public.board (
     color integer NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_by integer
+);
+
+
+--
+-- Name: board_config; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.board_config (
+    id integer DEFAULT 1 NOT NULL,
+    width integer NOT NULL,
+    height integer NOT NULL,
+    max_color integer NOT NULL,
+    CONSTRAINT board_config_check CHECK (((width > 0) AND (height > 0))),
+    CONSTRAINT board_config_id_check CHECK ((id = 1)),
+    CONSTRAINT board_config_max_color_check CHECK ((max_color >= 0))
 );
 
 
@@ -150,6 +197,14 @@ ALTER TABLE public.users ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     NO MAXVALUE
     CACHE 1
 );
+
+
+--
+-- Name: board_config board_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.board_config
+    ADD CONSTRAINT board_config_pkey PRIMARY KEY (id);
 
 
 --
@@ -278,4 +333,6 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20260130042327'),
     ('20260130211710'),
     ('20260319212640'),
-    ('20260320042714');
+    ('20260320042714'),
+    ('20260320200609'),
+    ('20260321181005');

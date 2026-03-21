@@ -5,6 +5,7 @@
 ////
 
 import gleam/dynamic/decode
+import gleam/option.{type Option}
 import gleam/time/timestamp.{type Timestamp}
 import pog
 
@@ -24,6 +25,40 @@ pub fn delete_session_by_token_hash(
 WHERE token_hash = $1;"
   |> pog.query
   |> pog.parameter(pog.bytea(arg_1))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// Runs the `init_board` query
+/// defined in `./src/server/sql/init_board.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn init_board(
+  db: pog.Connection,
+  arg_1: Int,
+  arg_2: Int,
+  arg_3: Int,
+  arg_4: Int,
+) -> Result(pog.Returned(Nil), pog.QueryError) {
+  let decoder = decode.map(decode.dynamic, fn(_) { Nil })
+
+  "WITH config AS (
+  INSERT INTO board_config(width, height, max_color)
+  VALUES ($1, $2, $3)
+  RETURNING width, height
+)
+INSERT INTO board(x, y, color)
+-- TODO: validate that initial_color is between 0 and max_color
+SELECT x, y, $4
+FROM config, generate_series(0, config.width - 1) AS x,
+  generate_series(0, config.height - 1) AS y;"
+  |> pog.query
+  |> pog.parameter(pog.int(arg_1))
+  |> pog.parameter(pog.int(arg_2))
+  |> pog.parameter(pog.int(arg_3))
+  |> pog.parameter(pog.int(arg_4))
   |> pog.returning(decoder)
   |> pog.execute(db)
 }
@@ -88,6 +123,44 @@ returning id, email, username"
   |> pog.parameter(pog.text(arg_1))
   |> pog.parameter(pog.text(arg_2))
   |> pog.parameter(pog.text(arg_3))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `select_tile_info_by_xy` query
+/// defined in `./src/server/sql/select_tile_info_by_xy.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type SelectTileInfoByXyRow {
+  SelectTileInfoByXyRow(updated_at: Timestamp, username: Option(String))
+}
+
+/// Runs the `select_tile_info_by_xy` query
+/// defined in `./src/server/sql/select_tile_info_by_xy.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn select_tile_info_by_xy(
+  db: pog.Connection,
+  arg_1: Int,
+  arg_2: Int,
+) -> Result(pog.Returned(SelectTileInfoByXyRow), pog.QueryError) {
+  let decoder = {
+    use updated_at <- decode.field(0, pog.timestamp_decoder())
+    use username <- decode.field(1, decode.optional(decode.string))
+    decode.success(SelectTileInfoByXyRow(updated_at:, username:))
+  }
+
+  "SELECT b.updated_at, u.username
+FROM board b
+LEFT JOIN users u ON b.updated_by = u.id
+WHERE b.x = $1 AND b.y = $2;"
+  |> pog.query
+  |> pog.parameter(pog.int(arg_1))
+  |> pog.parameter(pog.int(arg_2))
   |> pog.returning(decoder)
   |> pog.execute(db)
 }
@@ -175,6 +248,31 @@ FROM users u
 WHERE u.username = $1;"
   |> pog.query
   |> pog.parameter(pog.text(arg_1))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// Runs the `set_tile` query
+/// defined in `./src/server/sql/set_tile.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn set_tile(
+  db: pog.Connection,
+  arg_1: Int,
+  arg_2: Int,
+  arg_3: Int,
+  arg_4: Int,
+) -> Result(pog.Returned(Nil), pog.QueryError) {
+  let decoder = decode.map(decode.dynamic, fn(_) { Nil })
+
+  "CALL set_tile($1, $2, $3, $4);"
+  |> pog.query
+  |> pog.parameter(pog.int(arg_1))
+  |> pog.parameter(pog.int(arg_2))
+  |> pog.parameter(pog.int(arg_3))
+  |> pog.parameter(pog.int(arg_4))
   |> pog.returning(decoder)
   |> pog.execute(db)
 }
