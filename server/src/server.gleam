@@ -7,7 +7,7 @@ import gleam/otp/supervision
 import group_registry.{type GroupRegistry}
 import mist
 import pog
-import server/board.{type Board}
+import server/board_store.{type Board}
 import server/realtime
 import server/router
 import server/web.{type Context, Context}
@@ -35,7 +35,7 @@ pub fn init(
   let pog_config = pog_config(pool_name)
   let ctx = Context(db: pog.named_connection(pog_config.pool_name))
 
-  let board = board.random(width: 1000, height: 1000)
+  let board = board_store.random(width: 1000, height: 1000)
 
   let registry = group_registry.get_registry(registry_name)
 

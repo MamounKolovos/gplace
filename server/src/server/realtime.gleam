@@ -7,7 +7,7 @@ import gleam/option.{Some}
 import gleam/otp/actor
 import group_registry.{type GroupRegistry}
 import mist
-import server/board.{type Board}
+import server/board_store.{type Board}
 import shared/transport.{type ClientMessage, type ServerMessage}
 import wisp
 
@@ -166,7 +166,7 @@ fn handle_client_message(
   case message {
     transport.TileChanged(x:, y:, color:) -> {
       // authoritative server, ideally client should never send messages for out of bounds tiles
-      case board.set_tile(state.board, x: x, y: y, color: color) {
+      case board_store.set_tile(state.board, x: x, y: y, color: color) {
         Ok(_) -> {
           process.send(state.broker, TileChanged(x:, y:, color:))
           mist.continue(state)

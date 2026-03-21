@@ -9,7 +9,7 @@ import group_registry
 import mist
 import pog
 import server
-import server/board
+import server/board_store
 import server/realtime
 import server/web.{Context}
 
@@ -48,7 +48,7 @@ fn init_server(
 ) -> Result(actor.Started(Supervisor), actor.StartError) {
   let ctx = Context(db: global_connection_pool())
 
-  let board = board.random(width: 1000, height: 1000)
+  let board = board_store.random(width: 1000, height: 1000)
 
   let registry = group_registry.get_registry(registry_name)
 
