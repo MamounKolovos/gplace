@@ -1,27 +1,38 @@
+import gleam/bit_array
 import gleam/erlang/process
 import gleam/http/request
 import gleam/http/response
 import gleam/json
 import gleam/list
-import gleam/option.{Some}
+import gleam/option.{type Option, Some}
 import gleam/otp/actor
+import gleam/result
+import gleam/time/timestamp
 import group_registry.{type GroupRegistry}
 import mist
+import pog
+import server/auth
 import server/board_store.{type Board}
+import server/user.{type User}
 import shared/transport.{type ClientMessage, type ServerMessage}
 import wisp
+import youid/uuid
 
 pub fn websocket_handler(
   request: request.Request(mist.Connection),
+  db: pog.Connection,
   broker: process.Subject(BrokerMessage),
   registry: GroupRegistry(WebSocketMessage),
   board: Board,
 ) -> response.Response(mist.ResponseData) {
+  // must be done here instead of on_init since we still have the request here
+  let user = get_user(request, db) |> option.from_result
+
   mist.websocket(
     request,
     handler: handle_websocket_message,
     on_init: fn(conn) {
-      let #(state, client) = init_websocket(conn, broker, registry, board)
+      let #(state, client) = init_websocket(conn, user, broker, registry, board)
       let selector = process.new_selector() |> process.select(client)
       #(state, Some(selector))
     },
@@ -29,8 +40,29 @@ pub fn websocket_handler(
   )
 }
 
+fn get_user(
+  request: request.Request(mist.Connection),
+  db: pog.Connection,
+) -> Result(User, Nil) {
+  use session_token <- result.try(
+    request.get_cookies(request)
+    |> list.key_find("session")
+    |> result.try(bit_array.base64_decode)
+    |> result.try(bit_array.to_string)
+    |> result.try(uuid.from_string),
+  )
+
+  auth.authenticate(
+    db,
+    session_token: session_token,
+    now: timestamp.system_time(),
+  )
+  |> result.replace_error(Nil)
+}
+
 type WebSocketState {
   WebSocketState(
+    user: Option(User),
     broker: process.Subject(BrokerMessage),
     registry: GroupRegistry(WebSocketMessage),
     board: Board,
@@ -39,13 +71,14 @@ type WebSocketState {
 
 fn init_websocket(
   _conn: mist.WebsocketConnection,
+  user: Option(User),
   broker: process.Subject(BrokerMessage),
   registry: GroupRegistry(WebSocketMessage),
   board: Board,
 ) -> #(WebSocketState, process.Subject(WebSocketMessage)) {
   let client = group_registry.join(registry, "board", process.self())
   process.send(broker, ClientJoined)
-  #(WebSocketState(broker:, registry:, board:), client)
+  #(WebSocketState(user:, broker:, registry:, board:), client)
 }
 
 fn close_websocket(state: WebSocketState) -> Nil {

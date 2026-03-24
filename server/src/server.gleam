@@ -85,7 +85,7 @@ pub fn mist_config(
   mist.new(fn(request) {
     case request.path_segments(request) {
       ["api", "ws"] ->
-        realtime.websocket_handler(request, broker, registry, board)
+        realtime.websocket_handler(request, ctx.db, broker, registry, board)
       _ -> {
         let handler = router.handle_request(_, ctx, board)
         wisp_mist.handler(handler, secret_key_base)(request)

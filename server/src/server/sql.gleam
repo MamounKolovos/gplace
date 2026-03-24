@@ -47,10 +47,10 @@ pub fn init_board(
   "WITH config AS (
   INSERT INTO board_config(width, height, max_color)
   VALUES ($1, $2, $3)
+  ON CONFLICT DO NOTHING
   RETURNING width, height
 )
 INSERT INTO board(x, y, color)
--- TODO: validate that initial_color is between 0 and max_color
 SELECT x, y, $4
 FROM config, generate_series(0, config.width - 1) AS x,
   generate_series(0, config.height - 1) AS y;"
@@ -123,6 +123,39 @@ returning id, email, username"
   |> pog.parameter(pog.text(arg_1))
   |> pog.parameter(pog.text(arg_2))
   |> pog.parameter(pog.text(arg_3))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `select_board` query
+/// defined in `./src/server/sql/select_board.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type SelectBoardRow {
+  SelectBoardRow(color: Int)
+}
+
+/// Runs the `select_board` query
+/// defined in `./src/server/sql/select_board.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn select_board(
+  db: pog.Connection,
+) -> Result(pog.Returned(SelectBoardRow), pog.QueryError) {
+  let decoder = {
+    use color <- decode.field(0, decode.int)
+    decode.success(SelectBoardRow(color:))
+  }
+
+  "SELECT color
+FROM board
+-- row-major order matches tile_index formula:  y * width + x
+ORDER BY y, x;"
+  |> pog.query
   |> pog.returning(decoder)
   |> pog.execute(db)
 }
@@ -267,12 +300,55 @@ pub fn set_tile(
 ) -> Result(pog.Returned(Nil), pog.QueryError) {
   let decoder = decode.map(decode.dynamic, fn(_) { Nil })
 
-  "CALL set_tile($1, $2, $3, $4);"
+  "WITH u AS (
+  UPDATE board
+  SET color = $3, updated_by = $4
+  WHERE x = $1 AND y = $2
+  RETURNING x, y, $3::int AS color, $4::int AS user_id
+)
+INSERT INTO board_history (x, y, color, user_id)
+SELECT x, y, color, user_id
+FROM u;"
   |> pog.query
   |> pog.parameter(pog.int(arg_1))
   |> pog.parameter(pog.int(arg_2))
   |> pog.parameter(pog.int(arg_3))
   |> pog.parameter(pog.int(arg_4))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// Runs the `set_tiles` query
+/// defined in `./src/server/sql/set_tiles.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn set_tiles(
+  db: pog.Connection,
+  arg_1: List(Int),
+  arg_2: List(Int),
+  arg_3: List(Int),
+  arg_4: List(Int),
+) -> Result(pog.Returned(Nil), pog.QueryError) {
+  let decoder = decode.map(decode.dynamic, fn(_) { Nil })
+
+  "WITH updates AS (
+  UPDATE board
+  SET color = u.color, updated_by = u.user_id
+  FROM unnest($1::int[], $2::int[], $3::int[], $4::int[])
+    AS u(x, y, color, user_id)
+  WHERE board.x = u.x AND board.y = u.y
+  RETURNING board.x, board.y, u.color, u.user_id
+)
+INSERT INTO board_history (x, y, color, user_id)
+SELECT x, y, color, user_id 
+FROM updates;"
+  |> pog.query
+  |> pog.parameter(pog.array(fn(value) { pog.int(value) }, arg_1))
+  |> pog.parameter(pog.array(fn(value) { pog.int(value) }, arg_2))
+  |> pog.parameter(pog.array(fn(value) { pog.int(value) }, arg_3))
+  |> pog.parameter(pog.array(fn(value) { pog.int(value) }, arg_4))
   |> pog.returning(decoder)
   |> pog.execute(db)
 }

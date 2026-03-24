@@ -15,6 +15,61 @@ pub opaque type Board {
   Board(storage: AtomicArray, width: Int, height: Int)
 }
 
+pub fn hydrate(
+  using colors: List(Int),
+  width width: Int,
+  height height: Int,
+) -> Board {
+  let size = { width * height } / colors_per_chunk
+  let storage = atomic_array.new_unsigned(size)
+
+  let _ =
+    int.range(0, size, with: colors, run: fn(acc, i) {
+      let assert [
+        c1,
+        c2,
+        c3,
+        c4,
+        c5,
+        c6,
+        c7,
+        c8,
+        c9,
+        c10,
+        c11,
+        c12,
+        c13,
+        c14,
+        c15,
+        c16,
+        ..rest
+      ] = acc
+      let assert <<chunk:64>> = <<
+        c1:4,
+        c2:4,
+        c3:4,
+        c4:4,
+        c5:4,
+        c6:4,
+        c7:4,
+        c8:4,
+        c9:4,
+        c10:4,
+        c11:4,
+        c12:4,
+        c13:4,
+        c14:4,
+        c15:4,
+        c16:4,
+      >>
+
+      let assert Ok(_) = atomic_array.set(storage, i, chunk)
+      rest
+    })
+
+  Board(storage:, width:, height:)
+}
+
 pub fn new(width width: Int, height height: Int) -> Board {
   // TODO: make this work with truncated quotients
   let size = { width * height } / colors_per_chunk

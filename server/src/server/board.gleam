@@ -1,46 +1,128 @@
-import atomic_array.{type AtomicArray}
 import gleam/bool
-import gleam/int
-import shared/snapshot.{type Snapshot, Snapshot}
-
-pub const bits_per_color = 4
-
-/// bits per color divided by the maximum number of bits that can be stored in an atomic array integer
-pub const colors_per_chunk = 16
-
-const max_uint32 = 0xFFFF_FFFF
+import gleam/list
+import gleam/result
+import pog
+import server/board_store
+import server/database
+import server/user.{type User}
 
 pub opaque type Board {
-  Board(storage: AtomicArray, width: Int, height: Int)
+  Board(store: board_store.Board, db: pog.Connection, width: Int, height: Int)
 }
 
-pub fn new(width width: Int, height height: Int) -> Board {
-  // TODO: make this work with truncated quotients
-  let size = { width * height } / colors_per_chunk
-  let storage = atomic_array.new_unsigned(size)
+// Will uncomment all writer code when it's time to stress test
 
-  Board(storage:, width:, height:)
+pub fn init(db: pog.Connection, width width: Int, height height: Int) -> Board {
+  // let assert Ok(actor) =
+  //   actor.new_with_initialiser(1000, fn(subject) {
+  //     process.send_after(subject, 5000, Flush)
+
+  //     actor.initialised(WriterState(subject:, pending: deque.new(), db:))
+  //     |> actor.returning(subject)
+  //     |> Ok
+  //   })
+  //   |> actor.on_message(handle_message)
+  //   |> actor.start
+
+  // let writer = actor.data
+
+  let assert Ok(_) =
+    database.init_board(
+      db,
+      width: width,
+      height: height,
+      max_color: 15,
+      initial_color: 0,
+    )
+
+  let assert Ok(rows) = database.select_board(db)
+  let colors = list.map(rows, fn(row) { row.color })
+
+  let store = board_store.hydrate(using: colors, width: width, height: height)
+
+  Board(store:, db:, width:, height:)
 }
 
-pub fn random(width width: Int, height height: Int) -> Board {
-  let size = { width * height } / colors_per_chunk
-  let storage = atomic_array.new_unsigned(size)
+// type WriterMessage {
+//   Shutdown
+//   Flush
+//   SetTile(TileUpdate)
+// }
 
-  int.range(0, size, with: Nil, run: fn(_, i) {
-    let chunk = {
-      let low_half = int.random(max_uint32)
-      let high_half = int.random(max_uint32)
-      int.bitwise_or(low_half, int.bitwise_shift_left(high_half, 32))
-    }
-    let assert Ok(_) = atomic_array.set(storage, i, chunk)
-    Nil
-  })
+// type TileUpdate {
+//   TileUpdate(x: Int, y: Int, color: Int, user_id: Int)
+// }
 
-  Board(storage:, width:, height:)
-}
+// type WriterState {
+//   WriterState(
+//     subject: Subject(WriterMessage),
+//     pending: Deque(TileUpdate),
+//     db: pog.Connection,
+//   )
+// }
+
+// fn handle_message(
+//   state: WriterState,
+//   message: WriterMessage,
+// ) -> actor.Next(WriterState, WriterMessage) {
+//   case message {
+//     Shutdown -> actor.stop()
+//     Flush -> {
+//       let #(pending, #(xs, ys, colors, user_ids)) =
+//         deque_drain(
+//           state.pending,
+//           limit: None,
+//           from: #([], [], [], []),
+//           with: fn(acc, update) {
+//             let #(xs, ys, colors, user_ids) = acc
+
+//             let TileUpdate(x, y, color, user_id) = update
+
+//             #([x, ..xs], [y, ..ys], [color, ..colors], [user_id, ..user_ids])
+//           },
+//         )
+
+//       let assert Ok(_) = database.set_tiles(state.db, xs, ys, colors, user_ids)
+
+//       process.send_after(state.subject, 5000, Flush)
+
+//       let state = WriterState(..state, pending:)
+//       actor.continue(state)
+//     }
+//     SetTile(update) -> {
+//       let pending = deque.push_back(state.pending, update)
+//       let state = WriterState(..state, pending:)
+//       actor.continue(state)
+//     }
+//   }
+// }
+
+// fn deque_drain(
+//   over deque: Deque(a),
+//   limit limit: Option(Int),
+//   from initial: acc,
+//   with func: fn(acc, a) -> acc,
+// ) -> #(Deque(a), acc) {
+//   case limit {
+//     Some(0) -> #(deque, initial)
+//     Some(limit) ->
+//       case deque.pop_front(deque) {
+//         Ok(#(first, rest)) ->
+//           deque_drain(rest, Some(limit - 1), func(initial, first), func)
+//         Error(_) -> #(deque, initial)
+//       }
+//     None ->
+//       case deque.pop_front(deque) {
+//         Ok(#(first, rest)) ->
+//           deque_drain(rest, None, func(initial, first), func)
+//         Error(_) -> #(deque, initial)
+//       }
+//   }
+// }
 
 pub fn set_tile(
   board: Board,
+  user: User,
   x x: Int,
   y y: Int,
   color color: Int,
@@ -50,30 +132,20 @@ pub fn set_tile(
     return: Error(Nil),
   )
 
-  let tile_index = y * board.width + x
-  let array_index = tile_index / 16
-  let bit_offset = { tile_index % 16 } * 4
+  use _ <- result.try(board_store.set_tile(
+    board.store,
+    x: x,
+    y: y,
+    color: color,
+  ))
 
-  let assert Ok(chunk) = atomic_array.get(board.storage, array_index)
-  let assert <<left:size(bit_offset), _:4, right:bits>> = <<
-    chunk:64,
-  >>
-  let assert <<chunk:64>> = <<
-    left:size(bit_offset),
-    color:4,
-    right:bits,
-  >>
   let assert Ok(_) =
-    atomic_array.exchange(board.storage, at: array_index, replace_with: chunk)
+    database.set_tile(board.db, x: x, y: y, color: color, user_id: user.id)
+
+  // process.send(
+  //   board.writer,
+  //   SetTile(TileUpdate(x:, y:, color:, user_id: user.id)),
+  // )
 
   Ok(Nil)
 }
-
-pub fn to_snapshot(board: Board) -> Snapshot {
-  let Board(storage:, width:, height:) = board
-  let colors = do_to_bit_array(storage)
-  Snapshot(colors:, width:, height:)
-}
-
-@external(erlang, "board_ffi", "to_bit_array")
-fn do_to_bit_array(storage: AtomicArray) -> BitArray

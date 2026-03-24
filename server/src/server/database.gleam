@@ -69,12 +69,35 @@ pub fn set_tile(
   sql.set_tile(db, x, y, color, user_id) |> zero
 }
 
+pub fn set_tiles(
+  db: pog.Connection,
+  xs xs: List(Int),
+  ys ys: List(Int),
+  colors colors: List(Int),
+  user_ids user_ids: List(Int),
+) -> Result(Nil, Error) {
+  sql.set_tiles(db, xs, ys, colors, user_ids) |> zero
+}
+
 pub fn select_tile_info_by_xy(
   db: pog.Connection,
   x x: Int,
   y y: Int,
 ) -> Result(sql.SelectTileInfoByXyRow, Error) {
   sql.select_tile_info_by_xy(db, x, y) |> one
+}
+
+pub fn select_board(
+  db: pog.Connection,
+) -> Result(List(sql.SelectBoardRow), Error) {
+  sql.select_board(db) |> many
+}
+
+fn many(
+  query_result: Result(pog.Returned(row), pog.QueryError),
+) -> Result(List(row), Error) {
+  use returned <- result.try(query_result |> result.map_error(QueryFailed))
+  Ok(returned.rows)
 }
 
 fn one(
