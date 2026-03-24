@@ -33,7 +33,7 @@ pub fn init(
   broker_name: process.Name(realtime.BrokerMessage),
 ) -> Result(actor.Started(Supervisor), actor.StartError) {
   let pog_config = pog_config(pool_name)
-  let ctx = Context(db: pog.named_connection(pog_config.pool_name))
+  let pool = pog.named_connection(pog_config.pool_name)
 
   let board = board_store.random(width: 1000, height: 1000)
 
@@ -42,7 +42,7 @@ pub fn init(
   let broker_config = realtime.broker_config(broker_name, registry)
   let broker = process.named_subject(broker_name)
 
-  let mist_config = mist_config(ctx, broker, registry, board)
+  let mist_config = mist_config(pool, broker, registry, board)
 
   let db_spec = pog_config |> pog.supervised
   let registry_spec = registry_name |> group_registry.supervised
@@ -75,17 +75,18 @@ pub fn stop(server: process.Pid) -> Nil {
 }
 
 pub fn mist_config(
-  ctx: Context,
+  pool: pog.Connection,
   broker: process.Subject(realtime.BrokerMessage),
   registry: GroupRegistry(realtime.WebSocketMessage),
   board: Board,
 ) -> mist.Builder(mist.Connection, mist.ResponseData) {
   let assert Ok(secret_key_base) = envoy.get("SECRET_KEY_BASE")
+  let ctx = Context(db: pool)
 
   mist.new(fn(request) {
     case request.path_segments(request) {
       ["api", "ws"] ->
-        realtime.websocket_handler(request, ctx.db, broker, registry, board)
+        realtime.websocket_handler(request, pool, broker, registry, board)
       _ -> {
         let handler = router.handle_request(_, ctx, board)
         wisp_mist.handler(handler, secret_key_base)(request)

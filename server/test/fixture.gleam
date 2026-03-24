@@ -46,7 +46,7 @@ fn init_server(
   registry_name: process.Name(group_registry.Message(realtime.WebSocketMessage)),
   broker_name: process.Name(realtime.BrokerMessage),
 ) -> Result(actor.Started(Supervisor), actor.StartError) {
-  let ctx = Context(db: global_connection_pool())
+  let pool = global_connection_pool()
 
   let board = board_store.random(width: 1000, height: 1000)
 
@@ -56,7 +56,7 @@ fn init_server(
   let broker = process.named_subject(broker_name)
 
   let mist_config =
-    server.mist_config(ctx, broker, registry, board)
+    server.mist_config(pool, broker, registry, board)
     |> mist.after_start(fn(_, _, _) { Nil })
 
   let registry_spec = registry_name |> group_registry.supervised
