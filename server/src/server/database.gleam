@@ -59,6 +59,15 @@ pub fn init_board(
   sql.init_board(db, width, height, max_color, initial_color) |> zero
 }
 
+pub fn init_random_board(
+  db: pog.Connection,
+  width width: Int,
+  height height: Int,
+  max_color max_color: Int,
+) -> Result(Nil, Error) {
+  sql.init_random_board(db, width, height, max_color) |> zero
+}
+
 pub fn set_tile(
   db: pog.Connection,
   x x: Int,

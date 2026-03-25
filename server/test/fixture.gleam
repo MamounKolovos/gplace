@@ -9,7 +9,7 @@ import group_registry
 import mist
 import pog
 import server
-import server/board_store
+import server/board
 import server/realtime
 import server/web.{Context}
 
@@ -26,9 +26,10 @@ pub fn with_connection(test_case: fn(pog.Connection) -> a) -> Nil {
 pub fn with_server(test_case: fn() -> Nil) -> Nil {
   let registry_name = process.new_name("registry")
   let broker_name = process.new_name("broker")
+  let board_name = process.new_name("board")
 
   let assert Ok(actor.Started(pid: server, ..)) =
-    init_server(registry_name, broker_name)
+    init_server(registry_name, broker_name, board_name)
   use <- exception.defer(fn() { server.stop(server) })
 
   test_case()
@@ -45,10 +46,11 @@ pub fn with_client(test_case: fn(Client) -> a) -> Nil {
 fn init_server(
   registry_name: process.Name(group_registry.Message(realtime.WebSocketMessage)),
   broker_name: process.Name(realtime.BrokerMessage),
+  board_name: process.Name(board.Message),
 ) -> Result(actor.Started(Supervisor), actor.StartError) {
   let pool = global_connection_pool()
 
-  let board = board_store.random(width: 1000, height: 1000)
+  let board_subject = process.named_subject(board_name)
 
   let registry = group_registry.get_registry(registry_name)
 
@@ -56,7 +58,7 @@ fn init_server(
   let broker = process.named_subject(broker_name)
 
   let mist_config =
-    server.mist_config(pool, broker, registry, board)
+    server.mist_config(pool, board_subject, broker, registry)
     |> mist.after_start(fn(_, _, _) { Nil })
 
   let registry_spec = registry_name |> group_registry.supervised

@@ -63,6 +63,39 @@ FROM config, generate_series(0, config.width - 1) AS x,
   |> pog.execute(db)
 }
 
+/// Runs the `init_random_board` query
+/// defined in `./src/server/sql/init_random_board.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn init_random_board(
+  db: pog.Connection,
+  arg_1: Int,
+  arg_2: Int,
+  arg_3: Int,
+) -> Result(pog.Returned(Nil), pog.QueryError) {
+  let decoder = decode.map(decode.dynamic, fn(_) { Nil })
+
+  "WITH config AS (
+  INSERT INTO board_config(width, height, max_color)
+  VALUES ($1, $2, $3)
+  ON CONFLICT DO NOTHING
+  RETURNING width, height, max_color
+)
+INSERT INTO board(x, y, color)
+SELECT x, y, random(0, config.max_color)
+FROM config, generate_series(0, config.width - 1) AS x,
+  generate_series(0, config.height - 1) AS y;
+"
+  |> pog.query
+  |> pog.parameter(pog.int(arg_1))
+  |> pog.parameter(pog.int(arg_2))
+  |> pog.parameter(pog.int(arg_3))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
 /// Runs the `insert_session` query
 /// defined in `./src/server/sql/insert_session.sql`.
 ///

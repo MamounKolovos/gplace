@@ -5,7 +5,7 @@ import gleam/result
 import gleam/time/duration
 import gleam/time/timestamp
 import server/auth
-import server/board_store.{type Board}
+import server/board.{type Board}
 import server/user
 import server/web.{type Context}
 import shared/api_error.{type ApiError, ApiError}
@@ -38,7 +38,7 @@ fn handle_board(
   board: Board,
 ) -> wisp.Response {
   board
-  |> board_store.to_snapshot
+  |> board.to_snapshot
   |> snapshot.encode
   |> wisp.json_response(200)
 }

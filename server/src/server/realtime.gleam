@@ -12,7 +12,7 @@ import group_registry.{type GroupRegistry}
 import mist
 import pog
 import server/auth
-import server/board_store.{type Board}
+import server/board.{type Board}
 import server/user.{type User}
 import shared/transport.{type ClientMessage, type ServerMessage}
 import wisp
@@ -196,10 +196,10 @@ fn handle_client_message(
   state: WebSocketState,
   message: ClientMessage,
 ) -> mist.Next(WebSocketState, WebSocketMessage) {
-  case message {
-    transport.TileChanged(x:, y:, color:) -> {
+  case state.user, message {
+    Some(user), transport.TileChanged(x:, y:, color:) -> {
       // authoritative server, ideally client should never send messages for out of bounds tiles
-      case board_store.set_tile(state.board, x: x, y: y, color: color) {
+      case board.set_tile(state.board, user, x:, y:, color:) {
         Ok(_) -> {
           process.send(state.broker, TileChanged(x:, y:, color:))
           mist.continue(state)
@@ -207,6 +207,8 @@ fn handle_client_message(
         Error(_) -> mist.stop()
       }
     }
+    // TODO: should probably log something here
+    _, _ -> mist.continue(state)
   }
 }
 

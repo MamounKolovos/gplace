@@ -1,13 +1,70 @@
 import gleam/bool
+import gleam/erlang/process.{type Subject}
 import gleam/list
+import gleam/otp/actor
+import gleam/otp/supervision
 import gleam/result
 import pog
 import server/board_store
 import server/database
 import server/user.{type User}
+import shared/snapshot.{type Snapshot, Snapshot}
 
 pub opaque type Board {
-  Board(store: board_store.Board, db: pog.Connection, width: Int, height: Int)
+  Board(
+    store: board_store.BoardStore,
+    db: pog.Connection,
+    width: Int,
+    height: Int,
+  )
+}
+
+// pub opaque type Config {
+//   Config(width: Int, height: Int, max_color: Int)
+// }
+
+// pub fn new(
+//   width width: Int,
+//   height height: Int,
+//   max_color max_color: Int,
+// ) -> Config {
+//   Config(width:, height:, max_color:)
+// }
+
+pub fn supervised(
+  name: process.Name(Message),
+  db: pog.Connection,
+  width: Int,
+  height: Int,
+) -> supervision.ChildSpecification(Nil) {
+  supervision.worker(fn() {
+    // TODO: make this dynamic based off of how large the board is
+    actor.new_with_initialiser(5000, fn(_) {
+      random(db, width:, height:)
+      |> actor.initialised
+      |> Ok
+    })
+    |> actor.on_message(handle_message)
+    |> actor.named(name)
+    |> actor.start
+  })
+}
+
+pub type Message {
+  Get(reply_with: Subject(Board))
+}
+
+fn handle_message(board: Board, message: Message) -> actor.Next(Board, Message) {
+  case message {
+    Get(reply_with:) -> {
+      process.send(reply_with, board)
+      actor.continue(board)
+    }
+  }
+}
+
+pub fn get(subject: Subject(Message)) -> Board {
+  process.call(subject, 1000, Get)
 }
 
 // Will uncomment all writer code when it's time to stress test
@@ -34,6 +91,18 @@ pub fn init(db: pog.Connection, width width: Int, height height: Int) -> Board {
       max_color: 15,
       initial_color: 0,
     )
+
+  let assert Ok(rows) = database.select_board(db)
+  let colors = list.map(rows, fn(row) { row.color })
+
+  let store = board_store.hydrate(using: colors, width: width, height: height)
+
+  Board(store:, db:, width:, height:)
+}
+
+pub fn random(db: pog.Connection, width width: Int, height height: Int) -> Board {
+  let assert Ok(_) =
+    database.init_random_board(db, width:, height:, max_color: 15)
 
   let assert Ok(rows) = database.select_board(db)
   let colors = list.map(rows, fn(row) { row.color })
@@ -148,4 +217,9 @@ pub fn set_tile(
   // )
 
   Ok(Nil)
+}
+
+pub fn to_snapshot(board: Board) -> Snapshot {
+  let colors = board_store.to_bit_array(board.store)
+  Snapshot(colors:, width: board.width, height: board.height)
 }

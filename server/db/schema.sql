@@ -44,7 +44,7 @@ BEGIN
     SELECT width, height, max_color INTO width_, height_, max_color_ FROM board_config;
 
     IF color_ < 0 OR color_ > max_color_ THEN
-      RAISE EXCEPTION 'Expected: 0-%, got: %', max_color_, color_;
+      RAISE EXCEPTION 'Color out of bounds, expected: 0-%, got: %', max_color_, color_;
     END IF;
 
     IF x_ < 0 OR x_ >= width_ OR y_ < 0 OR y_ >= height_ THEN
