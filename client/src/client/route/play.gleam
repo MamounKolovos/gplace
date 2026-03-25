@@ -447,11 +447,11 @@ fn tile_snapper_view(
   html.div(
     [
       attribute.class(
-        "fixed "
-        <> css_size_px(camera.max_zoom, camera.max_zoom)
-        <> " pointer-events-none z-50
+        "fixed pointer-events-none z-50
         outline-3 outline-black",
       ),
+      attribute.style("width", int.to_string(camera.max_zoom) <> "px"),
+      attribute.style("height", int.to_string(camera.max_zoom) <> "px"),
       attribute.style("transform-origin", "0 0"),
       attribute.style(
         "transform",
@@ -460,12 +460,6 @@ fn tile_snapper_view(
     ],
     [],
   )
-}
-
-fn css_size_px(width: Int, height: Int) -> String {
-  let width = "w-[" <> int.to_string(width) <> "px]"
-  let height = "h-[" <> int.to_string(height) <> "px]"
-  width <> " " <> height
 }
 
 fn pointer_world_view(
