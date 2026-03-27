@@ -219,6 +219,11 @@ pub fn set_tile(
   Ok(Nil)
 }
 
+/// only called by tests, might move this out of here idk
+pub fn get_tile(board: Board, x x: Int, y y: Int) -> Result(Int, Nil) {
+  board_store.get_tile(board.store, x:, y:)
+}
+
 pub fn to_snapshot(board: Board) -> Snapshot {
   let colors = board_store.to_bit_array(board.store)
   Snapshot(colors:, width: board.width, height: board.height)

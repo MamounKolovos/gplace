@@ -102,6 +102,10 @@ pub fn select_board(
   sql.select_board(db) |> many
 }
 
+pub fn truncate_all(db: pog.Connection) -> Result(Nil, Error) {
+  sql.truncate_all(db) |> zero
+}
+
 fn many(
   query_result: Result(pog.Returned(row), pog.QueryError),
 ) -> Result(List(row), Error) {

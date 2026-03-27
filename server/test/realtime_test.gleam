@@ -1,32 +1,34 @@
 import client
 import fixture
+import gleam/erlang/process
+import logging
 import shared/transport
 
 pub fn simple_user_count_test() {
-  use <- fixture.with_server
-  use client <- fixture.with_client
+  use <- fixture.using_server
+  use client <- fixture.using_client
 
   assert client.receive(client) == transport.UserCountUpdated(count: 1)
 }
 
 pub fn user_count_broadcast_test() {
-  use <- fixture.with_server
+  use <- fixture.using_server
 
-  use client1 <- fixture.with_client
+  use client1 <- fixture.using_client
   assert client.receive(client1) == transport.UserCountUpdated(count: 1)
 
-  use client2 <- fixture.with_client
+  use client2 <- fixture.using_client
   assert client.receive(client1) == transport.UserCountUpdated(count: 2)
   assert client.receive(client2) == transport.UserCountUpdated(count: 2)
 }
 
 pub fn user_count_client_disconnect_test() {
-  use <- fixture.with_server
+  use <- fixture.using_server
 
-  use client1 <- fixture.with_client
+  use client1 <- fixture.using_client
   assert client.receive(client1) == transport.UserCountUpdated(count: 1)
 
-  use client2 <- fixture.with_client
+  use client2 <- fixture.using_client
   assert client.receive(client1) == transport.UserCountUpdated(count: 2)
   assert client.receive(client2) == transport.UserCountUpdated(count: 2)
 
@@ -35,8 +37,8 @@ pub fn user_count_client_disconnect_test() {
 }
 
 pub fn simple_tile_change_test() {
-  use <- fixture.with_server
-  use client <- fixture.with_client
+  use <- fixture.using_server
+  use client <- fixture.using_client
   let _ = client.receive(client)
 
   client.send(client, transport.TileChanged(x: 0, y: 0, color: 5))
@@ -45,12 +47,12 @@ pub fn simple_tile_change_test() {
 }
 
 pub fn tile_broadcast_test() {
-  use <- fixture.with_server
+  use <- fixture.using_server
 
-  use client1 <- fixture.with_client
+  use client1 <- fixture.using_client
   let _ = client.receive(client1)
 
-  use client2 <- fixture.with_client
+  use client2 <- fixture.using_client
   let _ = client.receive(client1)
   let _ = client.receive(client2)
 
@@ -59,3 +61,24 @@ pub fn tile_broadcast_test() {
   assert client.receive(client1) == transport.TileUpdate(x: 0, y: 0, color: 5)
   assert client.receive(client2) == transport.TileUpdate(x: 0, y: 0, color: 5)
 }
+// pub fn malicious_client_test() {
+//   // TODO: issue is that using `use` with using_server means that the entire server crashes so you cant put any more code beyond this point
+//   // must wrap in a callback or something
+//   use <- fixture.using_server
+
+//   use client <- fixture.using_client
+//   let _ = client.receive(client)
+
+//   client.send(client, transport.TileChanged(x: -1, y: -1, color: 0))
+// }
+// pub fn main() -> Nil {
+//   let assert Ok(client) = client.init()
+
+//   client.send(client, transport.TileChanged(x: -1, y: -1, color: 0))
+
+//   client.send(client, transport.TileChanged(x: 5, y: 5, color: 0))
+//   client.send(client, transport.TileChanged(x: 5, y: 5, color: 0))
+//   client.send(client, transport.TileChanged(x: 5, y: 5, color: 0))
+
+//   process.sleep_forever()
+// }

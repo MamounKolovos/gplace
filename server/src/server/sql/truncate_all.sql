@@ -1,0 +1,1 @@
+TRUNCATE TABLE board, board_config, board_history, sessions, users RESTART IDENTITY CASCADE;

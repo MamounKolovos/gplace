@@ -43,7 +43,8 @@ pub fn init(
   broker_name: process.Name(realtime.BrokerMessage),
   board_name: process.Name(board.Message),
 ) -> Result(Nil, actor.StartError) {
-  let pog_config = pog_config(pool_name)
+  let assert Ok(database_url) = envoy.get("DATABASE_URL")
+  let pog_config = pog_config(pool_name, database_url)
   let pool = pog.named_connection(pog_config.pool_name)
 
   let board_subject = process.named_subject(board_name)
@@ -113,9 +114,10 @@ pub fn mist_config(
   |> mist.port(8000)
 }
 
-pub fn pog_config(name: process.Name(pog.Message)) -> pog.Config {
-  let assert Ok(database_url) = envoy.get("DATABASE_URL")
-
+pub fn pog_config(
+  name: process.Name(pog.Message),
+  database_url: String,
+) -> pog.Config {
   let assert Ok(pog_config) = pog.url_config(name, database_url)
   pog_config |> pog.pool_size(10)
 }

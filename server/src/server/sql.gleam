@@ -385,3 +385,20 @@ FROM updates;"
   |> pog.returning(decoder)
   |> pog.execute(db)
 }
+
+/// Runs the `truncate_all` query
+/// defined in `./src/server/sql/truncate_all.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn truncate_all(
+  db: pog.Connection,
+) -> Result(pog.Returned(Nil), pog.QueryError) {
+  let decoder = decode.map(decode.dynamic, fn(_) { Nil })
+
+  "TRUNCATE TABLE board, board_config, board_history, sessions, users RESTART IDENTITY CASCADE;"
+  |> pog.query
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}

@@ -99,6 +99,18 @@ pub fn set_tile(
   Ok(Nil)
 }
 
+pub fn get_tile(board: BoardStore, x x: Int, y y: Int) -> Result(Int, Nil) {
+  let tile_index = y * board.width + x
+  let array_index = tile_index / 16
+  let bit_offset = { tile_index % 16 } * 4
+
+  let assert Ok(chunk) = atomic_array.get(board.storage, array_index)
+
+  let assert <<_:size(bit_offset), color:4, _:bits>> = <<chunk:64>>
+
+  Ok(color)
+}
+
 pub fn to_bit_array(board: BoardStore) -> BitArray {
   do_to_bit_array(board.storage)
 }
