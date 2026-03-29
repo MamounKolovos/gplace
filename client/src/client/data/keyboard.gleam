@@ -5,12 +5,14 @@ import lustre/effect.{type Effect}
 
 pub type Code {
   Space
+  Escape
 }
 
 fn code_decoder() -> Decoder(Code) {
   use variant <- decode.then(decode.string)
   case variant {
     "Space" -> decode.success(Space)
+    "Escape" -> decode.success(Escape)
     _ -> decode.failure(Space, "Code")
   }
 }

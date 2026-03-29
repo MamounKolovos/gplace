@@ -8,6 +8,7 @@ import client/data/websocket.{type WebSocket}
 import client/network
 import client/session.{type Session}
 import gleam/bool
+import gleam/dynamic/decode
 import gleam/float
 import gleam/int
 import gleam/json
@@ -17,6 +18,7 @@ import lustre/attribute
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
+import lustre/event
 import rsvp
 import shared/snapshot.{type Snapshot, Snapshot}
 import shared/transport.{type ServerMessage}
@@ -44,6 +46,7 @@ pub type State {
     pointer_position: Vec2,
     socket: WebSocket,
     user_count: Option(Int),
+    hovering_canvas: Bool,
   )
 }
 
@@ -53,7 +56,9 @@ pub type TileUpdate {
 
 pub type TilePlacementState {
   TilePlacementIdle
-  Pressed(position: board.Position)
+  TilePressed(position: board.Position)
+  TileSelected(position: board.Position)
+  SwatchSelected(position: board.Position, color: Int)
 }
 
 //TODO: add this to initializaing maybe?
@@ -78,6 +83,9 @@ pub type Msg {
   PrimaryPointerReleased(pointer.ButtonEvent)
   PointerMoved(pointer.MotionEvent)
   FrameTicked(dt: Float)
+  SwatchClicked(color: Int)
+  EscapePressed(keyboard.Event)
+  PointerOverCanvas(is_over: Bool)
 }
 
 pub fn init() -> #(Model, Effect(Msg)) {
@@ -117,6 +125,7 @@ pub fn update(
               pointer_position: Vec2(0.0, 0.0),
               socket:,
               user_count:,
+              hovering_canvas: False,
             )
           let model = Model(state:)
           let effect =
@@ -139,6 +148,7 @@ pub fn update(
     -> {
       let navigation_effects = [
         keyboard.lifecycle(keyboard.Space, SpaceChanged),
+        keyboard.listen(keyboard.KeyDown, keyboard.Escape, EscapePressed),
         pointer.listen_motion(pointer.PointerMove, PointerMoved),
         pointer.listen_button(
           pointer.PointerDown,
@@ -165,12 +175,18 @@ pub fn update(
       )
     }
 
+    Model(state: BoardLoaded(..) as state), PointerOverCanvas(is_over:) -> {
+      let state = BoardLoaded(..state, hovering_canvas: is_over)
+      let model = Model(state:)
+      #(session, model, effect.none())
+    }
+
     Model(
       state: BoardLoaded(
-        tile_placement: TilePlacementIdle,
         pan_state: Idle,
         board:,
         camera:,
+        hovering_canvas: True,
         ..,
       ) as state,
     ),
@@ -181,7 +197,7 @@ pub fn update(
         |> screen_to_board_space(board, camera)
       case position {
         Ok(position) -> {
-          let tile_placement = Pressed(position:)
+          let tile_placement = TilePressed(position:)
           let state = BoardLoaded(..state, tile_placement:)
           let model = Model(state:)
           #(session, model, effect.none())
@@ -201,12 +217,19 @@ pub fn update(
       let effect = board.draw(board, ctx)
       #(session, model, effect)
     }
+    Model(state: BoardLoaded(..) as state), EscapePressed(_) -> {
+      let state = BoardLoaded(..state, tile_placement: TilePlacementIdle)
+      let model = Model(state:)
+      #(session, model, effect.none())
+    }
+
     Model(
       state: BoardLoaded(
         pan_state: Idle,
-        tile_placement: Pressed(position: pressed_position),
+        tile_placement: TilePressed(position: pressed_position),
         board:,
         camera:,
+        hovering_canvas: True,
         ..,
       ) as state,
     ),
@@ -216,43 +239,71 @@ pub fn update(
         Vec2(event.client_x, event.client_y)
         |> screen_to_board_space(board, camera)
 
-      let camera = case released_position {
+      let #(camera, tile_placement) = case released_position {
         Ok(released_position) if pressed_position == released_position -> {
           let target_position = board_to_world_space(released_position)
           let target_zoom = 50.0
-          camera.start_tile_focus_animation(
-            camera,
-            duration: 1.5,
-            target_position: target_position,
-            target_zoom: target_zoom,
-          )
+          let camera =
+            camera.start_tile_focus_animation(
+              camera,
+              duration: 1.5,
+              target_position: target_position,
+              target_zoom: target_zoom,
+            )
+          #(camera, TileSelected(position: pressed_position))
         }
-        _ -> camera
+        _ -> #(camera, TilePlacementIdle)
       }
 
-      let state =
-        BoardLoaded(..state, camera:, tile_placement: TilePlacementIdle)
+      let state = BoardLoaded(..state, camera:, tile_placement:)
       let model = Model(state:)
       #(session, model, effect.none())
-      // let released_position =
-      //   Vec2(event.client_x, event.client_y)
-      //   |> screen_to_board_space(board, camera)
-
-      // let effect = case released_position {
-      //   Ok(released_position) if pressed_position == released_position -> {
-      //     let #(x, y) = board.position_to_tuple(released_position)
-      //     let message = transport.TileChanged(x:, y:, color: 5)
-      //     send_client_message(socket, message)
-      //   }
-      //   _ -> effect.none()
-      // }
-
-      // let state = BoardLoaded(..state, tile_placement: TilePlacementIdle)
-      // let model = Model(state:)
-      // #(session, model, effect)
     }
 
-    Model(state: BoardLoaded(..) as state), SpaceChanged(is_down:) -> {
+    Model(
+      state: BoardLoaded(tile_placement: TileSelected(position:), ..) as state,
+    ),
+      SwatchClicked(color:)
+    -> {
+      let state =
+        BoardLoaded(..state, tile_placement: SwatchSelected(position:, color:))
+      let model = Model(state:)
+      #(session, model, effect.none())
+    }
+
+    Model(
+      state: BoardLoaded(
+        tile_placement: SwatchSelected(position:, color: selected_color),
+        socket:,
+        ..,
+      ) as state,
+    ),
+      SwatchClicked(color: clicked_color)
+    -> {
+      case selected_color == clicked_color {
+        True -> {
+          let #(x, y) = board.position_to_tuple(position)
+          let message = transport.TileChanged(x:, y:, color: selected_color)
+          let effect = send_client_message(socket, message)
+          let state = BoardLoaded(..state, tile_placement: TilePlacementIdle)
+          let model = Model(state:)
+          #(session, model, effect)
+        }
+        False -> {
+          let state =
+            BoardLoaded(
+              ..state,
+              tile_placement: SwatchSelected(position:, color: clicked_color),
+            )
+          let model = Model(state:)
+          #(session, model, effect.none())
+        }
+      }
+    }
+
+    Model(state: BoardLoaded(tile_placement: TilePlacementIdle, ..) as state),
+      SpaceChanged(is_down:)
+    -> {
       let pan_state = case is_down {
         True -> PanPrimed
         False -> Idle
@@ -262,7 +313,13 @@ pub fn update(
       #(session, model, effect.none())
     }
 
-    Model(state: BoardLoaded(pan_state: PanPrimed, ..) as state),
+    Model(
+      state: BoardLoaded(
+        tile_placement: TilePlacementIdle,
+        pan_state: PanPrimed,
+        ..,
+      ) as state,
+    ),
       PrimaryPointerPressedDown(event)
     -> {
       let last_pointer_position = Vec2(event.client_x, event.client_y)
@@ -336,6 +393,12 @@ fn fetch_snapshot() -> Effect(Msg) {
   rsvp.get("/api/board", handler)
 }
 
+fn board_to_screen_space(position: board.Position, camera: Camera) -> Vec2 {
+  board.position_to_vec(position)
+  |> camera.vec_to_world
+  |> camera.world_to_screen(camera, _)
+}
+
 fn board_to_world_space(position: board.Position) -> camera.Position {
   board.position_to_vec(position)
   |> camera.vec_to_world
@@ -407,9 +470,25 @@ fn send_client_message(
 
 pub fn view(model: Model) -> Element(Msg) {
   case model.state {
-    BoardLoaded(board:, camera:, pointer_position:, pan_state:, user_count:, ..) ->
-      html.div([], [
-        hud_view(board, camera, pointer_position, user_count),
+    BoardLoaded(
+      board:,
+      camera:,
+      pointer_position:,
+      pan_state:,
+      tile_placement:,
+      user_count:,
+      hovering_canvas:,
+      ..,
+    ) ->
+      html.div([attribute.class("bg-gray-800")], [
+        hud_view(
+          board,
+          camera,
+          pointer_position,
+          tile_placement,
+          user_count,
+          hovering_canvas,
+        ),
         canvas_view(camera, pan_state),
       ])
     BoardFailedToLoad(error_text:) -> html.text(error_text)
@@ -421,11 +500,19 @@ fn hud_view(
   board: Board,
   camera: Camera,
   pointer_position: Vec2,
+  tile_placement: TilePlacementState,
   user_count: Option(Int),
+  hovering_canvas: Bool,
 ) -> Element(Msg) {
   html.div([], [
+    color_picker_view(tile_placement),
+    case tile_placement {
+      SwatchSelected(position:, ..) | TileSelected(position:) ->
+        tile_selection_view(board, camera, position)
+      _ -> element.none()
+    },
     // too zoomed out to see so no point rendering it
-    case camera.zoom(camera) >. 10.0 {
+    case camera.zoom(camera) >. 10.0 && hovering_canvas {
       True -> tile_snapper_view(board, camera, pointer_position)
       False -> element.none()
     },
@@ -435,6 +522,103 @@ fn hud_view(
       _ -> element.none()
     },
   ])
+}
+
+fn color_picker_view(tile_placement: TilePlacementState) -> Element(Msg) {
+  let position_class = case tile_placement {
+    TilePlacementIdle | TilePressed(..) -> "translate-y-full"
+    TileSelected(..) | SwatchSelected(..) -> "translate-y-0"
+  }
+
+  let selected_color = case tile_placement {
+    SwatchSelected(color:, ..) -> Some(color)
+    _ -> None
+  }
+
+  html.div(
+    [
+      attribute.class(
+        "fixed bottom-0 inset-x-0 h-12 z-100 bg-white flex items-center gap-2 px-8 transition-transform duration-300 ease-in-out "
+        <> position_class,
+      ),
+    ],
+    [
+      // decrement cause of prepend order reversal
+      int.range(15, -1, with: [], run: fn(acc, color) {
+        let is_selected = case selected_color {
+          Some(selected_color) -> selected_color == color
+          _ -> False
+        }
+        [color_button_view(color, is_selected), ..acc]
+      })
+      |> element.fragment,
+    ],
+  )
+}
+
+fn color_button_view(color: Int, is_selected: Bool) -> Element(Msg) {
+  let selected_class = case is_selected {
+    True -> "outline-3 outline-gray-700"
+    False -> "outline-1 outline-gray-200"
+  }
+
+  html.button(
+    [
+      attribute.class(
+        "h-6 flex-1 hover:outline-3 hover:outline-gray-700 " <> selected_class,
+      ),
+      attribute.style("background-color", color_to_hex(color)),
+      event.on_click(SwatchClicked(color:)),
+    ],
+    [],
+  )
+}
+
+fn color_to_hex(color: Int) -> String {
+  case color {
+    0 -> "#FFFFFF"
+    1 -> "#E4E4E4"
+    2 -> "#888888"
+    3 -> "#222222"
+    4 -> "#FFA7D1"
+    5 -> "#E50000"
+    6 -> "#E59500"
+    7 -> "#A06A42"
+    8 -> "#E5D900"
+    9 -> "#94E044"
+    10 -> "#02BE01"
+    11 -> "#00D3DD"
+    12 -> "#0083C7"
+    13 -> "#0000EA"
+    14 -> "#CF6EE4"
+    15 -> "#820080"
+    _ -> "#000000"
+  }
+}
+
+fn tile_selection_view(
+  board: Board,
+  camera: Camera,
+  tile_position: board.Position,
+) -> Element(Msg) {
+  let position = board_to_screen_space(tile_position, camera)
+
+  html.div(
+    [
+      attribute.class(
+        "fixed pointer-events-none z-50
+        outline-3 outline-black",
+      ),
+      attribute.style("width", int.to_string(camera.max_zoom) <> "px"),
+      attribute.style("height", int.to_string(camera.max_zoom) <> "px"),
+      attribute.style("transform-origin", "0 0"),
+      attribute.style(
+        "transform",
+        css_translate(position) <> css_scale(camera.zoom(camera) /. 100.0),
+      ),
+    ],
+    [],
+  )
 }
 
 fn tile_snapper_view(
@@ -485,10 +669,11 @@ fn pointer_world_view(
     [
       attribute.class(
         "
-        fixed top-4 left-1/2 -translate-x-1/2 z-50
+        fixed top-4 left-1/2 -translate-x-1/2 z-100
         rounded-full
         bg-white/90 text-black
         px-3 py-1.5
+        select-none
         ",
       ),
     ],
@@ -503,10 +688,11 @@ fn user_count_view(user_count: Int) -> Element(Msg) {
     [
       attribute.class(
         // "fixed top-4 left-1/2 -translate-x-1/2 z-50
-        "fixed top-4 right-4 z-50
+        "fixed top-4 right-4 z-100
             rounded-full
             bg-white/90 text-black 
             px-3 py-1.5
+            select-none
             ",
       ),
     ],
@@ -538,6 +724,14 @@ fn canvas_view(camera: Camera, pan_state: PanState) -> Element(Msg) {
               PanPrimed -> attribute.class("cursor-grab")
               Panning(..) -> attribute.class("cursor-grabbing")
             },
+            event.on(
+              "pointerenter",
+              decode.success(PointerOverCanvas(is_over: True)),
+            ),
+            event.on(
+              "pointerleave",
+              decode.success(PointerOverCanvas(is_over: False)),
+            ),
           ]),
         ],
       ),
