@@ -49,6 +49,13 @@ pub fn delete_session_by_token_hash(
   sql.delete_session_by_token_hash(db, token_hash) |> zero
 }
 
+pub fn select_stats_by_id(
+  db: pog.Connection,
+  id id: Int,
+) -> Result(sql.SelectStatsByIdRow, Error) {
+  sql.select_stats_by_id(db, id) |> one
+}
+
 pub fn init_board(
   db: pog.Connection,
   width width: Int,

@@ -193,6 +193,44 @@ ORDER BY y, x;"
   |> pog.execute(db)
 }
 
+/// A row you get from running the `select_stats_by_id` query
+/// defined in `./src/server/sql/select_stats_by_id.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type SelectStatsByIdRow {
+  SelectStatsByIdRow(tiles_placed: Int, last_placed_at: Option(Timestamp))
+}
+
+/// Runs the `select_stats_by_id` query
+/// defined in `./src/server/sql/select_stats_by_id.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn select_stats_by_id(
+  db: pog.Connection,
+  arg_1: Int,
+) -> Result(pog.Returned(SelectStatsByIdRow), pog.QueryError) {
+  let decoder = {
+    use tiles_placed <- decode.field(0, decode.int)
+    use last_placed_at <- decode.field(
+      1,
+      decode.optional(pog.timestamp_decoder()),
+    )
+    decode.success(SelectStatsByIdRow(tiles_placed:, last_placed_at:))
+  }
+
+  "SELECT tiles_placed, last_placed_at
+FROM users
+WHERE id = $1;"
+  |> pog.query
+  |> pog.parameter(pog.int(arg_1))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
 /// A row you get from running the `select_tile_info_by_xy` query
 /// defined in `./src/server/sql/select_tile_info_by_xy.sql`.
 ///

@@ -181,7 +181,10 @@ CREATE TABLE public.users (
     password_hash text NOT NULL,
     username text NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    last_placed_at timestamp without time zone,
+    tiles_placed integer DEFAULT 0 NOT NULL,
+    CONSTRAINT users_tiles_placed_check CHECK ((tiles_placed >= 0))
 );
 
 
@@ -335,4 +338,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20260319212640'),
     ('20260320042714'),
     ('20260320200609'),
-    ('20260321181005');
+    ('20260321181005'),
+    ('20260329205406');

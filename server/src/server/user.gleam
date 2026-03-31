@@ -1,8 +1,16 @@
+import gleam/crypto
 import gleam/json.{type Json}
+import gleam/option.{type Option, None, Some}
 import gleam/result
+import gleam/time/timestamp.{type Timestamp}
 import pog
 import server/database
 import server/sql
+import youid/uuid.{type Uuid}
+
+pub type Error {
+  InternalError(database.Error)
+}
 
 pub type User {
   User(id: Int, email: String, username: String)
@@ -23,6 +31,20 @@ pub fn insert(
 ) -> Result(User, database.Error) {
   database.insert_user(db, email, username, password_hash)
   |> result.map(from_insert_user_row)
+}
+
+pub type Stats {
+  Stats(tiles_placed: Int, last_placed_at: Option(Timestamp))
+}
+
+pub fn get_stats(user: User, db: pog.Connection) -> Result(Stats, Error) {
+  use row <- result.try(
+    database.select_stats_by_id(db, id: user.id)
+    |> result.map_error(InternalError),
+  )
+
+  Stats(tiles_placed: row.tiles_placed, last_placed_at: row.last_placed_at)
+  |> Ok
 }
 
 pub fn from_select_user_by_username_row(

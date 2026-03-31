@@ -10,6 +10,7 @@ import server/user
 import server/web.{type Context}
 import shared/api_error.{type ApiError, ApiError}
 import shared/snapshot
+import shared/user_stats.{UserStats}
 import wisp.{type Request, type Response}
 import youid/uuid
 
@@ -18,6 +19,7 @@ const session_duration_seconds = 3600
 type Error(f) {
   InvalidForm(Form(f))
   AuthError(auth.Error)
+  UserError(user.Error)
   SessionParsingFailed
 }
 
@@ -27,6 +29,7 @@ pub fn handle_request(request: Request, ctx: Context, board: Board) -> Response 
     ["api", "signup"] -> signup(request, ctx)
     ["api", "login"] -> login(request, ctx)
     ["api", "me"] -> me(request, ctx)
+    ["api", "stats"] -> handle_stats(request, ctx)
     ["api", "board"] -> handle_board(request, ctx, board)
     _ -> wisp.not_found()
   }
@@ -41,6 +44,48 @@ fn handle_board(
   |> board.to_snapshot
   |> snapshot.encode
   |> wisp.json_response(200)
+}
+
+fn handle_stats(request: wisp.Request, ctx: Context) -> wisp.Response {
+  let result = {
+    use session_token_string <- result.try(
+      request
+      |> wisp.get_cookie("session", wisp.PlainText)
+      |> result.replace_error(SessionParsingFailed),
+    )
+
+    use session_token <- result.try(
+      session_token_string
+      |> uuid.from_string
+      |> result.replace_error(SessionParsingFailed),
+    )
+
+    use user <- result.try(
+      auth.authenticate(
+        ctx.db,
+        session_token: session_token,
+        now: timestamp.system_time(),
+      )
+      |> result.map_error(AuthError),
+    )
+
+    use stats <- result.try(
+      user.get_stats(user, ctx.db) |> result.map_error(UserError),
+    )
+
+    UserStats(
+      tiles_placed: stats.tiles_placed,
+      last_placed_at: stats.last_placed_at,
+    )
+    |> Ok
+  }
+
+  case result {
+    Ok(stats) -> user_stats.encode(stats) |> wisp.json_response(200)
+    Error(SessionParsingFailed) -> unauthenticated()
+    Error(AuthError(auth.InvalidSession)) -> unauthenticated()
+    Error(_) -> internal_error()
+  }
 }
 
 fn me(request: wisp.Request, ctx: Context) -> wisp.Response {
