@@ -81,8 +81,9 @@ pub fn set_tile(
   y y: Int,
   color color: Int,
   user_id user_id: Int,
+  now now: Timestamp,
 ) -> Result(Nil, Error) {
-  sql.set_tile(db, x, y, color, user_id) |> zero
+  sql.set_tile(db, x, y, color, user_id, now) |> zero
 }
 
 pub fn set_tiles(

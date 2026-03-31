@@ -4,6 +4,7 @@ import gleam/list
 import gleam/otp/actor
 import gleam/otp/supervision
 import gleam/result
+import gleam/time/timestamp.{type Timestamp}
 import pog
 import server/board_store
 import server/database
@@ -195,6 +196,7 @@ pub fn set_tile(
   x x: Int,
   y y: Int,
   color color: Int,
+  now now: Timestamp,
 ) -> Result(Nil, Nil) {
   use <- bool.guard(
     x < 0 || x >= board.width || y < 0 || y >= board.height,
@@ -209,7 +211,14 @@ pub fn set_tile(
   ))
 
   let assert Ok(_) =
-    database.set_tile(board.db, x: x, y: y, color: color, user_id: user.id)
+    database.set_tile(
+      board.db,
+      x: x,
+      y: y,
+      color: color,
+      user_id: user.id,
+      now:,
+    )
 
   // process.send(
   //   board.writer,

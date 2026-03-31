@@ -199,7 +199,16 @@ fn handle_client_message(
   case state.user, message {
     Some(user), transport.TileChanged(x:, y:, color:) -> {
       // authoritative server, ideally client should never send messages for out of bounds tiles
-      case board.set_tile(state.board, user, x:, y:, color:) {
+      case
+        board.set_tile(
+          state.board,
+          user,
+          x:,
+          y:,
+          color:,
+          now: timestamp.system_time(),
+        )
+      {
         Ok(_) -> {
           process.send(state.broker, TileChanged(x:, y:, color:))
           mist.continue(state)
