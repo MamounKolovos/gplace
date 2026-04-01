@@ -47,6 +47,7 @@ pub type State {
     socket: WebSocket,
     user_count: Option(Int),
     hovering_canvas: Bool,
+    cooldown_remaining: Option(Float),
   )
 }
 
@@ -126,6 +127,7 @@ pub fn update(
               socket:,
               user_count:,
               hovering_canvas: False,
+              cooldown_remaining: None,
             )
           let model = Model(state:)
           let effect =
@@ -207,12 +209,28 @@ pub fn update(
     }
 
     Model(
-      state: BoardLoaded(board:, camera:, canvas_handle: Cached(ctx:, ..), ..) as state,
+      state: BoardLoaded(
+        board:,
+        camera:,
+        cooldown_remaining:,
+        canvas_handle: Cached(ctx:, ..),
+        ..,
+      ) as state,
     ),
       FrameTicked(dt:)
     -> {
       let camera = camera.update(camera, dt)
-      let state = BoardLoaded(..state, camera:)
+      let cooldown_remaining = case cooldown_remaining {
+        Some(cooldown_remaining) -> {
+          let cooldown_remaining = cooldown_remaining -. dt
+          case cooldown_remaining <=. 0.0 {
+            True -> None
+            False -> Some(cooldown_remaining)
+          }
+        }
+        None -> None
+      }
+      let state = BoardLoaded(..state, camera:, cooldown_remaining:)
       let model = Model(state:)
       let effect = board.draw(board, ctx)
       #(session, model, effect)
@@ -230,6 +248,7 @@ pub fn update(
         board:,
         camera:,
         hovering_canvas: True,
+        cooldown_remaining:,
         ..,
       ) as state,
     ),
@@ -250,7 +269,14 @@ pub fn update(
               target_position: target_position,
               target_zoom: target_zoom,
             )
-          #(camera, TileSelected(position: pressed_position))
+
+          let tile_placement = case session, cooldown_remaining {
+            session.LoggedIn(..), None ->
+              TileSelected(position: pressed_position)
+            _, _ -> TilePlacementIdle
+          }
+
+          #(camera, tile_placement)
         }
         _ -> #(camera, TilePlacementIdle)
       }
@@ -285,7 +311,12 @@ pub fn update(
           let #(x, y) = board.position_to_tuple(position)
           let message = transport.TileChanged(x:, y:, color: selected_color)
           let effect = send_client_message(socket, message)
-          let state = BoardLoaded(..state, tile_placement: TilePlacementIdle)
+          let state =
+            BoardLoaded(
+              ..state,
+              tile_placement: TilePlacementIdle,
+              cooldown_remaining: Some(5.0),
+            )
           let model = Model(state:)
           #(session, model, effect)
         }
@@ -478,6 +509,7 @@ pub fn view(model: Model) -> Element(Msg) {
       tile_placement:,
       user_count:,
       hovering_canvas:,
+      cooldown_remaining:,
       ..,
     ) ->
       html.div([attribute.class("bg-gray-800")], [
@@ -488,6 +520,7 @@ pub fn view(model: Model) -> Element(Msg) {
           tile_placement,
           user_count,
           hovering_canvas,
+          cooldown_remaining,
         ),
         canvas_view(camera, pan_state),
       ])
@@ -503,8 +536,13 @@ fn hud_view(
   tile_placement: TilePlacementState,
   user_count: Option(Int),
   hovering_canvas: Bool,
+  cooldown_remaining: Option(Float),
 ) -> Element(Msg) {
   html.div([], [
+    case cooldown_remaining {
+      Some(cooldown_remaining) -> timer_view(cooldown_remaining)
+      None -> element.none()
+    },
     color_picker_view(tile_placement),
     case tile_placement {
       SwatchSelected(position:, ..) | TileSelected(position:) ->
@@ -522,6 +560,29 @@ fn hud_view(
       _ -> element.none()
     },
   ])
+}
+
+fn timer_view(cooldown_remaining: Float) -> Element(Msg) {
+  let cooldown_remaining_string = case cooldown_remaining <. 1.0 {
+    True -> {
+      let ms = float.truncate(cooldown_remaining *. 1000.0) |> int.to_string
+      ms <> "ms"
+    }
+    False -> float.truncate(cooldown_remaining) |> int.to_string
+  }
+  html.div(
+    [
+      attribute.class(
+        "fixed bottom-0 left-1/2 -translate-x-1/2 z-100
+            rounded-full
+            bg-white/90 text-black 
+            px-3 py-1.5
+            select-none
+            ",
+      ),
+    ],
+    [html.text(cooldown_remaining_string)],
+  )
 }
 
 fn color_picker_view(tile_placement: TilePlacementState) -> Element(Msg) {

@@ -114,7 +114,6 @@ pub fn close(client: Client) -> Nil {
   Nil
 }
 
-pub fn receive(client: Client) -> ServerMessage {
-  let assert Ok(message) = process.receive(client.inbox, within: 1000)
-  message
+pub fn receive(client: Client) -> Result(ServerMessage, Nil) {
+  process.receive(client.inbox, within: 1000)
 }

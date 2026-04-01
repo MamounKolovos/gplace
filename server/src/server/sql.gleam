@@ -193,6 +193,43 @@ ORDER BY y, x;"
   |> pog.execute(db)
 }
 
+/// A row you get from running the `select_last_placed_at_by_id` query
+/// defined in `./src/server/sql/select_last_placed_at_by_id.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type SelectLastPlacedAtByIdRow {
+  SelectLastPlacedAtByIdRow(last_placed_at: Option(Timestamp))
+}
+
+/// Runs the `select_last_placed_at_by_id` query
+/// defined in `./src/server/sql/select_last_placed_at_by_id.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn select_last_placed_at_by_id(
+  db: pog.Connection,
+  arg_1: Int,
+) -> Result(pog.Returned(SelectLastPlacedAtByIdRow), pog.QueryError) {
+  let decoder = {
+    use last_placed_at <- decode.field(
+      0,
+      decode.optional(pog.timestamp_decoder()),
+    )
+    decode.success(SelectLastPlacedAtByIdRow(last_placed_at:))
+  }
+
+  "SELECT last_placed_at
+FROM users
+WHERE id = $1;"
+  |> pog.query
+  |> pog.parameter(pog.int(arg_1))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
 /// A row you get from running the `select_stats_by_id` query
 /// defined in `./src/server/sql/select_stats_by_id.sql`.
 ///

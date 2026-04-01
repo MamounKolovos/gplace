@@ -4,10 +4,12 @@ import gleam/http/request
 import gleam/http/response
 import gleam/json
 import gleam/list
-import gleam/option.{type Option, Some}
+import gleam/option.{type Option, None, Some}
+import gleam/order
 import gleam/otp/actor
 import gleam/result
-import gleam/time/timestamp
+import gleam/time/duration
+import gleam/time/timestamp.{type Timestamp}
 import group_registry.{type GroupRegistry}
 import mist
 import pog
@@ -28,11 +30,18 @@ pub fn websocket_handler(
   // must be done here instead of on_init since we still have the request here
   let user = get_user(request, db) |> option.from_result
 
+  let last_placed_at = case user {
+    Some(user) ->
+      user.get_last_placed_at(user, db) |> option.from_result |> option.flatten
+    None -> None
+  }
+
   mist.websocket(
     request,
     handler: handle_websocket_message,
     on_init: fn(conn) {
-      let #(state, client) = init_websocket(conn, user, broker, registry, board)
+      let #(state, client) =
+        init_websocket(conn, user, broker, registry, board, last_placed_at)
       let selector = process.new_selector() |> process.select(client)
       #(state, Some(selector))
     },
@@ -66,6 +75,8 @@ type WebSocketState {
     broker: process.Subject(BrokerMessage),
     registry: GroupRegistry(WebSocketMessage),
     board: Board,
+    /// `None` could either mean the user doesn't exist or that they haven't placed a tile yet
+    last_placed_at: Option(Timestamp),
   )
 }
 
@@ -75,10 +86,11 @@ fn init_websocket(
   broker: process.Subject(BrokerMessage),
   registry: GroupRegistry(WebSocketMessage),
   board: Board,
+  last_placed_at: Option(Timestamp),
 ) -> #(WebSocketState, process.Subject(WebSocketMessage)) {
   let client = group_registry.join(registry, "board", process.self())
   process.send(broker, ClientJoined)
-  #(WebSocketState(user:, broker:, registry:, board:), client)
+  #(WebSocketState(user:, broker:, registry:, board:, last_placed_at:), client)
 }
 
 fn close_websocket(state: WebSocketState) -> Nil {
@@ -198,24 +210,42 @@ fn handle_client_message(
 ) -> mist.Next(WebSocketState, WebSocketMessage) {
   case state.user, message {
     Some(user), transport.TileChanged(x:, y:, color:) -> {
-      // authoritative server, ideally client should never send messages for out of bounds tiles
-      case
-        board.set_tile(
-          state.board,
-          user,
-          x:,
-          y:,
-          color:,
-          now: timestamp.system_time(),
-        )
-      {
-        Ok(_) -> {
-          process.send(state.broker, TileChanged(x:, y:, color:))
-          mist.continue(state)
+      let now = timestamp.system_time()
+
+      let on_cooldown = case state.last_placed_at {
+        Some(last_placed_at) -> {
+          let elapsed = timestamp.difference(last_placed_at, now)
+          duration.compare(elapsed, duration.seconds(5)) == order.Lt
         }
-        Error(_) -> mist.stop()
+        None -> False
+      }
+
+      case on_cooldown {
+        //TODO: silently ignore for now, but might want to close connection in the future
+        // since the user would have to modify the JS to bypass the client cooldown
+        True -> mist.continue(state)
+        False ->
+          // authoritative server, ideally client should never send messages for out of bounds tiles
+          case
+            board.set_tile(
+              state.board,
+              user,
+              x:,
+              y:,
+              color:,
+              now: timestamp.system_time(),
+            )
+          {
+            Ok(_) -> {
+              process.send(state.broker, TileChanged(x:, y:, color:))
+              let state = WebSocketState(..state, last_placed_at: Some(now))
+              mist.continue(state)
+            }
+            Error(_) -> mist.stop()
+          }
       }
     }
+
     // TODO: should probably log something here
     _, _ -> mist.continue(state)
   }

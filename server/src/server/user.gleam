@@ -47,6 +47,18 @@ pub fn get_stats(user: User, db: pog.Connection) -> Result(Stats, Error) {
   |> Ok
 }
 
+pub fn get_last_placed_at(
+  user: User,
+  db: pog.Connection,
+) -> Result(Option(Timestamp), Error) {
+  use row <- result.try(
+    database.select_last_placed_at_by_id(db, id: user.id)
+    |> result.map_error(InternalError),
+  )
+
+  Ok(row.last_placed_at)
+}
+
 pub fn from_select_user_by_username_row(
   row: sql.SelectUserByUsernameRow,
 ) -> User {

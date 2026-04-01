@@ -56,6 +56,13 @@ pub fn select_stats_by_id(
   sql.select_stats_by_id(db, id) |> one
 }
 
+pub fn select_last_placed_at_by_id(
+  db: pog.Connection,
+  id id: Int,
+) -> Result(sql.SelectLastPlacedAtByIdRow, Error) {
+  sql.select_last_placed_at_by_id(db, id) |> one
+}
+
 pub fn init_board(
   db: pog.Connection,
   width width: Int,
