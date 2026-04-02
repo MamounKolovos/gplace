@@ -7,7 +7,7 @@ import gleam/http/request
 import gleam/otp/actor
 import gleam/otp/static_supervisor.{type Supervisor}
 import gleam/otp/supervision
-import gleam/time/duration
+import gleam/time/duration.{type Duration}
 import gleam/time/timestamp
 import global_value
 import group_registry
@@ -31,14 +31,23 @@ pub fn with_connection(test_case: fn(pog.Connection) -> a) -> Nil {
   Nil
 }
 
-pub fn using_server(test_case: fn() -> Nil) -> Nil {
+pub fn default_server_config() -> server.Config {
+  server.Config(
+    board_width: 50,
+    board_height: 50,
+    tile_cooldown: duration.seconds(5),
+    session_duration: duration.hours(100),
+  )
+}
+
+pub fn using_server(config: server.Config, test_case: fn() -> Nil) -> Nil {
   let pool = global_connection_pool()
   let registry_name = process.new_name("registry")
   let broker_name = process.new_name("broker")
   let board_name = process.new_name("board")
 
   let assert Ok(actor.Started(pid: server, ..)) =
-    init_server(registry_name, broker_name, board_name)
+    init_server(config, registry_name, broker_name, board_name)
   use <- exception.defer(fn() {
     server.stop(server)
     database.truncate_all(pool)
@@ -48,7 +57,25 @@ pub fn using_server(test_case: fn() -> Nil) -> Nil {
 }
 
 pub fn using_client(test_case: fn(Client) -> a) -> Nil {
-  use _, _, session_token <- using_user
+  // use _, _, session_token <- using_user
+
+  let pool = global_connection_pool()
+
+  let id = uuid.v4() |> uuid.to_string
+  let email = "user_" <> id <> "@test.com"
+  let username = "user_" <> id
+
+  // discard user since it's a server side object
+  // and it doesn't make sense for the "client" to do anything with it
+  let assert Ok(#(_user, session_token)) =
+    auth.signup(
+      pool,
+      email:,
+      username:,
+      password: "password1",
+      session_expires_in: duration.seconds(10_000_000),
+      now: timestamp.system_time(),
+    )
 
   let assert Ok(request) = request.to("http://localhost:8000/api/ws")
 
@@ -87,27 +114,8 @@ pub fn with_user(test_case: fn(pog.Connection, User, Uuid) -> a) -> Nil {
   Nil
 }
 
-pub fn using_user(test_case: fn(pog.Connection, User, Uuid) -> a) -> Nil {
-  let pool = global_connection_pool()
-
-  let id = uuid.v4() |> uuid.to_string
-  let email = "user_" <> id <> "@test.com"
-  let username = "user_" <> id
-
-  let assert Ok(#(user, session_token)) =
-    auth.signup(
-      pool,
-      email:,
-      username:,
-      password: "password1",
-      session_expires_in: duration.seconds(10_000_000),
-      now: timestamp.system_time(),
-    )
-  test_case(pool, user, session_token)
-  Nil
-}
-
 fn init_server(
+  config: server.Config,
   registry_name: process.Name(group_registry.Message(realtime.WebSocketMessage)),
   broker_name: process.Name(realtime.BrokerMessage),
   board_name: process.Name(board.Message),
@@ -122,12 +130,20 @@ fn init_server(
   let broker = process.named_subject(broker_name)
 
   let mist_config =
-    server.mist_config(pool, board_subject, broker, registry)
+    server.mist_config(
+      pool,
+      board_subject,
+      broker,
+      registry,
+      config.session_duration,
+      config.tile_cooldown,
+    )
     |> mist.after_start(fn(_, _, _) { Nil })
 
   let registry_spec = registry_name |> group_registry.supervised
   let broker_spec = supervision.worker(fn() { actor.start(broker_config) })
-  let board_spec = board.supervised(board_name, pool, 50, 50)
+  let board_spec =
+    board.supervised(board_name, pool, config.board_width, config.board_height)
   let server_spec = mist.supervised(mist_config)
 
   static_supervisor.new(static_supervisor.RestForOne)

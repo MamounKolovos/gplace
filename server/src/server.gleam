@@ -5,7 +5,7 @@ import gleam/otp/actor
 import gleam/otp/static_supervisor
 import gleam/otp/supervision
 import gleam/result
-import gleam/time/duration
+import gleam/time/duration.{type Duration}
 import gleam/time/timestamp
 import group_registry.{type GroupRegistry}
 import mist
@@ -18,15 +18,33 @@ import server/web.{Context}
 import wisp
 import wisp/wisp_mist
 
+pub type Config {
+  Config(
+    board_width: Int,
+    board_height: Int,
+    tile_cooldown: Duration,
+    session_duration: Duration,
+  )
+}
+
 pub fn main() -> Nil {
   wisp.configure_logger()
+
+  let config =
+    Config(
+      board_width: 300,
+      board_height: 300,
+      tile_cooldown: duration.seconds(5),
+      session_duration: duration.hours(1),
+    )
 
   let pool_name = process.new_name("db")
   let registry_name = process.new_name("registry")
   let broker_name = process.new_name("broker")
   let board_name = process.new_name("board")
 
-  let assert Ok(_) = init(pool_name, registry_name, broker_name, board_name)
+  let assert Ok(_) =
+    init(config, pool_name, registry_name, broker_name, board_name)
     as "server could not be started"
 
   let pool = pog.named_connection(pool_name)
@@ -38,6 +56,7 @@ pub fn main() -> Nil {
 }
 
 pub fn init(
+  config: Config,
   pool_name: process.Name(pog.Message),
   registry_name: process.Name(group_registry.Message(realtime.WebSocketMessage)),
   broker_name: process.Name(realtime.BrokerMessage),
@@ -54,12 +73,21 @@ pub fn init(
   let broker_config = realtime.broker_config(broker_name, registry)
   let broker = process.named_subject(broker_name)
 
-  let mist_config = mist_config(pool, board_subject, broker, registry)
+  let mist_config =
+    mist_config(
+      pool,
+      board_subject,
+      broker,
+      registry,
+      config.session_duration,
+      config.tile_cooldown,
+    )
 
   let db_spec = pog_config |> pog.supervised
   let registry_spec = registry_name |> group_registry.supervised
   let broker_spec = supervision.worker(fn() { actor.start(broker_config) })
-  let board_spec = board.supervised(board_name, pool, 300, 300)
+  let board_spec =
+    board.supervised(board_name, pool, config.board_width, config.board_height)
   let server_spec = mist.supervised(mist_config)
 
   let supervisor =
@@ -95,16 +123,25 @@ pub fn mist_config(
   board_subject: process.Subject(board.Message),
   broker: process.Subject(realtime.BrokerMessage),
   registry: GroupRegistry(realtime.WebSocketMessage),
+  session_duration: Duration,
+  tile_cooldown: Duration,
 ) -> mist.Builder(mist.Connection, mist.ResponseData) {
   let assert Ok(secret_key_base) = envoy.get("SECRET_KEY_BASE")
-  let ctx = Context(db: pool)
+  let ctx = Context(db: pool, session_duration:)
 
   mist.new(fn(request) {
     let board = board.get(board_subject)
 
     case request.path_segments(request) {
       ["api", "ws"] ->
-        realtime.websocket_handler(request, pool, broker, registry, board)
+        realtime.websocket_handler(
+          request,
+          pool,
+          broker,
+          registry,
+          board,
+          tile_cooldown,
+        )
       _ -> {
         let handler = router.handle_request(_, ctx, board)
         wisp_mist.handler(handler, secret_key_base)(request)

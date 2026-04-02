@@ -1,8 +1,9 @@
+import gleam/time/duration.{type Duration}
 import pog
 import wisp
 
 pub type Context {
-  Context(db: pog.Connection)
+  Context(db: pog.Connection, session_duration: Duration)
 }
 
 pub fn middleware(

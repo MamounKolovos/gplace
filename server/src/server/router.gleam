@@ -1,4 +1,5 @@
 import formal/form.{type Form}
+import gleam/float
 import gleam/json.{type Json}
 import gleam/option.{None, Some}
 import gleam/result
@@ -13,8 +14,6 @@ import shared/snapshot
 import shared/user_stats.{UserStats}
 import wisp.{type Request, type Response}
 import youid/uuid
-
-const session_duration_seconds = 3600
 
 type Error(f) {
   InvalidForm(Form(f))
@@ -134,7 +133,6 @@ fn login(request: wisp.Request, ctx: Context) -> wisp.Response {
         |> option.from_result
 
       let now = timestamp.system_time()
-      let session_duration = duration.seconds(session_duration_seconds)
 
       case session_token {
         Some(session_token) -> {
@@ -142,7 +140,7 @@ fn login(request: wisp.Request, ctx: Context) -> wisp.Response {
             auth.login_with_session(
               ctx.db,
               old_session_token: session_token,
-              expires_in: session_duration,
+              expires_in: ctx.session_duration,
               now: now,
             )
 
@@ -153,7 +151,7 @@ fn login(request: wisp.Request, ctx: Context) -> wisp.Response {
                 ctx.db,
                 username: login_data.username,
                 password: login_data.password,
-                session_expires_in: session_duration,
+                session_expires_in: ctx.session_duration,
                 now: now,
               )
               |> result.map_error(AuthError)
@@ -165,7 +163,7 @@ fn login(request: wisp.Request, ctx: Context) -> wisp.Response {
             ctx.db,
             username: login_data.username,
             password: login_data.password,
-            session_expires_in: session_duration,
+            session_expires_in: ctx.session_duration,
             now: now,
           )
           |> result.map_error(AuthError)
@@ -185,7 +183,7 @@ fn login(request: wisp.Request, ctx: Context) -> wisp.Response {
         name: "session",
         value: uuid.to_string(session_token),
         security: wisp.PlainText,
-        max_age: session_duration_seconds,
+        max_age: duration.to_seconds(ctx.session_duration) |> float.truncate,
       )
     Error(AuthError(auth.InvalidCredentials)) -> invalid_credentials()
     Error(InvalidForm(form)) -> invalid_form("Some fields are invalid")
@@ -225,7 +223,7 @@ fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
         email: signup.email,
         username: signup.username,
         password: signup.password,
-        session_expires_in: duration.seconds(session_duration_seconds),
+        session_expires_in: ctx.session_duration,
         now: timestamp.system_time(),
       )
       |> result.map_error(AuthError)
@@ -244,7 +242,7 @@ fn signup(request: wisp.Request, ctx: Context) -> wisp.Response {
         name: "session",
         value: uuid.to_string(session_token),
         security: wisp.PlainText,
-        max_age: session_duration_seconds,
+        max_age: duration.to_seconds(ctx.session_duration) |> float.truncate,
       )
     Error(InvalidForm(form)) -> invalid_form("Some fields are invalid")
     Error(AuthError(auth.EmailAlreadyExists)) ->

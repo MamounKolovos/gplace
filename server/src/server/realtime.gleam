@@ -8,7 +8,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/order
 import gleam/otp/actor
 import gleam/result
-import gleam/time/duration
+import gleam/time/duration.{type Duration}
 import gleam/time/timestamp.{type Timestamp}
 import group_registry.{type GroupRegistry}
 import mist
@@ -26,6 +26,7 @@ pub fn websocket_handler(
   broker: process.Subject(BrokerMessage),
   registry: GroupRegistry(WebSocketMessage),
   board: Board,
+  tile_cooldown: Duration,
 ) -> response.Response(mist.ResponseData) {
   // must be done here instead of on_init since we still have the request here
   let user = get_user(request, db) |> option.from_result
@@ -38,7 +39,9 @@ pub fn websocket_handler(
 
   mist.websocket(
     request,
-    handler: handle_websocket_message,
+    handler: fn(state, message, conn) {
+      handle_websocket_message(state, message, conn, tile_cooldown)
+    },
     on_init: fn(conn) {
       let #(state, client) =
         init_websocket(conn, user, broker, registry, board, last_placed_at)
@@ -173,12 +176,13 @@ fn handle_websocket_message(
   state: WebSocketState,
   message: mist.WebsocketMessage(WebSocketMessage),
   conn: mist.WebsocketConnection,
+  tile_cooldown: Duration,
 ) -> mist.Next(WebSocketState, WebSocketMessage) {
   case message {
     // sent by client
     mist.Text(message) ->
       case json.parse(message, transport.client_message_decoder()) {
-        Ok(message) -> handle_client_message(state, message)
+        Ok(message) -> handle_client_message(state, message, tile_cooldown)
         Error(_) -> {
           wisp.log_error("failed to parse client message")
           mist.stop()
@@ -207,6 +211,7 @@ fn handle_websocket_message(
 fn handle_client_message(
   state: WebSocketState,
   message: ClientMessage,
+  tile_cooldown: Duration,
 ) -> mist.Next(WebSocketState, WebSocketMessage) {
   case state.user, message {
     Some(user), transport.TileChanged(x:, y:, color:) -> {
@@ -215,7 +220,7 @@ fn handle_client_message(
       let on_cooldown = case state.last_placed_at {
         Some(last_placed_at) -> {
           let elapsed = timestamp.difference(last_placed_at, now)
-          duration.compare(elapsed, duration.seconds(5)) == order.Lt
+          duration.compare(elapsed, tile_cooldown) == order.Lt
         }
         None -> False
       }
