@@ -1,14 +1,18 @@
 import client.{type Client}
 import envoy
 import exception
-import gleam/bit_array
 import gleam/erlang/process
+import gleam/http
 import gleam/http/request
+import gleam/http/response
+import gleam/httpc
+import gleam/list
 import gleam/otp/actor
 import gleam/otp/static_supervisor.{type Supervisor}
 import gleam/otp/supervision
 import gleam/time/duration.{type Duration}
 import gleam/time/timestamp
+import gleam/uri
 import global_value
 import group_registry
 import mist
@@ -57,35 +61,33 @@ pub fn using_server(config: server.Config, test_case: fn() -> Nil) -> Nil {
 }
 
 pub fn using_client(test_case: fn(Client) -> a) -> Nil {
-  // use _, _, session_token <- using_user
-
-  let pool = global_connection_pool()
-
   let id = uuid.v4() |> uuid.to_string
   let email = "user_" <> id <> "@test.com"
   let username = "user_" <> id
 
-  // discard user since it's a server side object
-  // and it doesn't make sense for the "client" to do anything with it
-  let assert Ok(#(_user, session_token)) =
-    auth.signup(
-      pool,
-      email:,
-      username:,
-      password: "password1",
-      session_expires_in: duration.seconds(10_000_000),
-      now: timestamp.system_time(),
-    )
+  let query = [
+    #("email", email),
+    #("username", username),
+    #("password", "password1"),
+  ]
+
+  let assert Ok(request) = request.to("http://localhost:8000/api/signup")
+
+  let config = httpc.configure() |> httpc.verify_tls(False)
+
+  let assert Ok(response) =
+    request
+    |> request.set_method(http.Post)
+    |> request.set_header("content-type", "application/x-www-form-urlencoded")
+    |> request.set_body(uri.query_to_string(query))
+    |> httpc.dispatch(config, _)
+
+  let assert Ok(session_token) =
+    response.get_cookies(response) |> list.key_find("session")
 
   let assert Ok(request) = request.to("http://localhost:8000/api/ws")
-
-  let encoded_token = {
-    let token_string = uuid.to_string(session_token)
-    // encodes the UUID string itself not the raw bytes
-    bit_array.base64_encode(<<token_string:utf8>>, False)
-  }
   let request =
-    request.prepend_header(request, "cookie", "session=" <> encoded_token)
+    request.prepend_header(request, "cookie", "session=" <> session_token)
 
   let assert Ok(client) = client.init(request)
   use <- exception.defer(fn() { client.close(client) })
