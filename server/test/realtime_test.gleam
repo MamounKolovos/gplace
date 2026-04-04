@@ -7,30 +7,30 @@ import server
 import shared/transport
 
 pub fn simple_user_count_test() {
-  use <- fixture.using_server(fixture.default_server_config())
-  use client <- fixture.using_client
+  use request_handler <- fixture.using_server(fixture.default_server_config())
+  use client <- fixture.using_client(request_handler)
 
   assert client.receive(client) == Ok(transport.UserCountUpdated(count: 1))
 }
 
 pub fn user_count_broadcast_test() {
-  use <- fixture.using_server(fixture.default_server_config())
+  use request_handler <- fixture.using_server(fixture.default_server_config())
 
-  use client1 <- fixture.using_client
+  use client1 <- fixture.using_client(request_handler)
   assert client.receive(client1) == Ok(transport.UserCountUpdated(count: 1))
 
-  use client2 <- fixture.using_client
+  use client2 <- fixture.using_client(request_handler)
   assert client.receive(client1) == Ok(transport.UserCountUpdated(count: 2))
   assert client.receive(client2) == Ok(transport.UserCountUpdated(count: 2))
 }
 
 pub fn user_count_client_disconnect_test() {
-  use <- fixture.using_server(fixture.default_server_config())
+  use request_handler <- fixture.using_server(fixture.default_server_config())
 
-  use client1 <- fixture.using_client
+  use client1 <- fixture.using_client(request_handler)
   assert client.receive(client1) == Ok(transport.UserCountUpdated(count: 1))
 
-  use client2 <- fixture.using_client
+  use client2 <- fixture.using_client(request_handler)
   assert client.receive(client1) == Ok(transport.UserCountUpdated(count: 2))
   assert client.receive(client2) == Ok(transport.UserCountUpdated(count: 2))
 
@@ -39,8 +39,8 @@ pub fn user_count_client_disconnect_test() {
 }
 
 pub fn simple_tile_change_test() {
-  use <- fixture.using_server(fixture.default_server_config())
-  use client <- fixture.using_client
+  use request_handler <- fixture.using_server(fixture.default_server_config())
+  use client <- fixture.using_client(request_handler)
   let _ = client.receive(client)
 
   client.send(client, transport.TileChanged(x: 0, y: 0, color: 5))
@@ -50,12 +50,12 @@ pub fn simple_tile_change_test() {
 }
 
 pub fn tile_broadcast_test() {
-  use <- fixture.using_server(fixture.default_server_config())
+  use request_handler <- fixture.using_server(fixture.default_server_config())
 
-  use client1 <- fixture.using_client
+  use client1 <- fixture.using_client(request_handler)
   let _ = client.receive(client1)
 
-  use client2 <- fixture.using_client
+  use client2 <- fixture.using_client(request_handler)
   let _ = client.receive(client1)
   let _ = client.receive(client2)
 
@@ -75,9 +75,9 @@ pub fn set_tile_allows_placement_after_cooldown_test() {
       // should be a good bit lower than gleeunit test timeout value
       tile_cooldown: duration.milliseconds(tile_cooldown_ms),
     )
-  use <- fixture.using_server(config)
+  use request_handler <- fixture.using_server(config)
 
-  use client <- fixture.using_client
+  use client <- fixture.using_client(request_handler)
   let _ = client.receive(client)
 
   client.send(client, transport.TileChanged(x: 5, y: 5, color: 5))
@@ -97,9 +97,9 @@ pub fn set_tile_rejects_placement_during_cooldown_test() {
       ..fixture.default_server_config(),
       tile_cooldown: duration.seconds(50),
     )
-  use <- fixture.using_server(config)
+  use request_handler <- fixture.using_server(config)
 
-  use client <- fixture.using_client
+  use client <- fixture.using_client(request_handler)
   let _ = client.receive(client)
 
   client.send(client, transport.TileChanged(x: 5, y: 5, color: 5))

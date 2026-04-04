@@ -5,16 +5,14 @@ import gleam/erlang/process
 import gleam/http
 import gleam/http/request
 import gleam/http/response
-import gleam/httpc
 import gleam/list
 import gleam/otp/actor
 import gleam/otp/static_supervisor.{type Supervisor}
 import gleam/otp/supervision
 import gleam/time/duration.{type Duration}
 import gleam/time/timestamp
-import gleam/uri
 import global_value
-import group_registry
+import group_registry.{type GroupRegistry}
 import mist
 import pog
 import server
@@ -23,6 +21,9 @@ import server/board
 import server/database
 import server/realtime
 import server/user.{type User}
+import server/web
+import wisp
+import wisp/simulate
 import youid/uuid.{type Uuid}
 
 pub fn with_connection(test_case: fn(pog.Connection) -> a) -> Nil {
@@ -44,23 +45,63 @@ pub fn default_server_config() -> server.Config {
   )
 }
 
-pub fn using_server(config: server.Config, test_case: fn() -> Nil) -> Nil {
-  let pool = global_connection_pool()
+pub fn using_server(
+  config: server.Config,
+  test_case: fn(fn(wisp.Request) -> wisp.Response) -> Nil,
+) -> Nil {
   let registry_name = process.new_name("registry")
   let broker_name = process.new_name("broker")
   let board_name = process.new_name("board")
 
+  let pool = global_connection_pool()
+
+  let board_subject = process.named_subject(board_name)
+
+  let registry = group_registry.get_registry(registry_name)
+
+  let broker_config = realtime.broker_config(broker_name, registry)
+  let broker = process.named_subject(broker_name)
+
+  let ctx = web.Context(db: pool, session_duration: config.session_duration)
+
+  let wisp_handler = server.wisp_handler(ctx, board_subject)
+  let mist_config =
+    server.mist_config(
+      wisp_handler,
+      ctx,
+      board_subject,
+      broker,
+      registry,
+      config.tile_cooldown,
+    )
+    |> mist.after_start(fn(_, _, _) { Nil })
+
+  let registry_spec = registry_name |> group_registry.supervised
+  let broker_spec = supervision.worker(fn() { actor.start(broker_config) })
+  let board_spec =
+    board.supervised(board_name, pool, config.board_width, config.board_height)
+  let server_spec = mist.supervised(mist_config)
+
   let assert Ok(actor.Started(pid: server, ..)) =
-    init_server(config, registry_name, broker_name, board_name)
+    static_supervisor.new(static_supervisor.RestForOne)
+    |> static_supervisor.add(registry_spec)
+    |> static_supervisor.add(broker_spec)
+    |> static_supervisor.add(board_spec)
+    |> static_supervisor.add(server_spec)
+    |> static_supervisor.start()
+
   use <- exception.defer(fn() {
     server.stop(server)
     database.truncate_all(pool)
   })
 
-  test_case()
+  test_case(wisp_handler)
 }
 
-pub fn using_client(test_case: fn(Client) -> a) -> Nil {
+pub fn using_client(
+  request_handler: fn(wisp.Request) -> wisp.Response,
+  test_case: fn(Client) -> a,
+) -> Nil {
   let id = uuid.v4() |> uuid.to_string
   let email = "user_" <> id <> "@test.com"
   let username = "user_" <> id
@@ -71,19 +112,14 @@ pub fn using_client(test_case: fn(Client) -> a) -> Nil {
     #("password", "password1"),
   ]
 
-  let assert Ok(request) = request.to("http://localhost:8000/api/signup")
+  let signup_request =
+    simulate.browser_request(http.Post, "/api/signup")
+    |> simulate.form_body(query)
 
-  let config = httpc.configure() |> httpc.verify_tls(False)
-
-  let assert Ok(response) =
-    request
-    |> request.set_method(http.Post)
-    |> request.set_header("content-type", "application/x-www-form-urlencoded")
-    |> request.set_body(uri.query_to_string(query))
-    |> httpc.dispatch(config, _)
+  let signup_response = request_handler(signup_request)
 
   let assert Ok(session_token) =
-    response.get_cookies(response) |> list.key_find("session")
+    response.get_cookies(signup_response) |> list.key_find("session")
 
   let assert Ok(request) = request.to("http://localhost:8000/api/ws")
   let request =
@@ -114,46 +150,6 @@ pub fn with_user(test_case: fn(pog.Connection, User, Uuid) -> a) -> Nil {
     )
   test_case(conn, user, session_token)
   Nil
-}
-
-fn init_server(
-  config: server.Config,
-  registry_name: process.Name(group_registry.Message(realtime.WebSocketMessage)),
-  broker_name: process.Name(realtime.BrokerMessage),
-  board_name: process.Name(board.Message),
-) -> Result(actor.Started(Supervisor), actor.StartError) {
-  let pool = global_connection_pool()
-
-  let board_subject = process.named_subject(board_name)
-
-  let registry = group_registry.get_registry(registry_name)
-
-  let broker_config = realtime.broker_config(broker_name, registry)
-  let broker = process.named_subject(broker_name)
-
-  let mist_config =
-    server.mist_config(
-      pool,
-      board_subject,
-      broker,
-      registry,
-      config.session_duration,
-      config.tile_cooldown,
-    )
-    |> mist.after_start(fn(_, _, _) { Nil })
-
-  let registry_spec = registry_name |> group_registry.supervised
-  let broker_spec = supervision.worker(fn() { actor.start(broker_config) })
-  let board_spec =
-    board.supervised(board_name, pool, config.board_width, config.board_height)
-  let server_spec = mist.supervised(mist_config)
-
-  static_supervisor.new(static_supervisor.RestForOne)
-  |> static_supervisor.add(registry_spec)
-  |> static_supervisor.add(broker_spec)
-  |> static_supervisor.add(board_spec)
-  |> static_supervisor.add(server_spec)
-  |> static_supervisor.start()
 }
 
 /// safe to create name "dynamically" since callback is only ran once

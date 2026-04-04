@@ -73,13 +73,16 @@ pub fn init(
   let broker_config = realtime.broker_config(broker_name, registry)
   let broker = process.named_subject(broker_name)
 
+  let ctx = Context(db: pool, session_duration: config.session_duration)
+
+  let wisp_handler = wisp_handler(ctx, board_subject)
   let mist_config =
     mist_config(
-      pool,
+      wisp_handler,
+      ctx,
       board_subject,
       broker,
       registry,
-      config.session_duration,
       config.tile_cooldown,
     )
 
@@ -118,16 +121,25 @@ pub fn stop(server: process.Pid) -> Nil {
   Nil
 }
 
+pub fn wisp_handler(
+  ctx: web.Context,
+  board_subject: process.Subject(board.Message),
+) -> fn(wisp.Request) -> wisp.Response {
+  fn(request) {
+    let board = board.get(board_subject)
+    router.handle_request(request, ctx, board)
+  }
+}
+
 pub fn mist_config(
-  pool: pog.Connection,
+  wisp_handler: fn(wisp.Request) -> wisp.Response,
+  ctx: web.Context,
   board_subject: process.Subject(board.Message),
   broker: process.Subject(realtime.BrokerMessage),
   registry: GroupRegistry(realtime.WebSocketMessage),
-  session_duration: Duration,
   tile_cooldown: Duration,
 ) -> mist.Builder(mist.Connection, mist.ResponseData) {
   let assert Ok(secret_key_base) = envoy.get("SECRET_KEY_BASE")
-  let ctx = Context(db: pool, session_duration:)
 
   mist.new(fn(request) {
     let board = board.get(board_subject)
@@ -136,15 +148,14 @@ pub fn mist_config(
       ["api", "ws"] ->
         realtime.websocket_handler(
           request,
-          pool,
+          ctx.db,
           broker,
           registry,
           board,
           tile_cooldown,
         )
       _ -> {
-        let handler = router.handle_request(_, ctx, board)
-        wisp_mist.handler(handler, secret_key_base)(request)
+        wisp_mist.handler(wisp_handler, secret_key_base)(request)
       }
     }
   })
