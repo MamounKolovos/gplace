@@ -1,6 +1,7 @@
 import gleam/erlang/process.{type Pid, type Subject}
 import gleam/http/request.{type Request}
 import gleam/json
+import gleam/otp/actor
 import gleam/result
 import shared/transport.{type ClientMessage, type ServerMessage}
 import stratus
@@ -28,9 +29,7 @@ type State {
   State(client_inbox: Subject(ServerMessage))
 }
 
-pub fn init(
-  request: Request(String),
-) -> Result(Client, stratus.InitializationError) {
+pub fn init(request: Request(String)) -> Result(Client, actor.StartError) {
   let inbox = process.new_subject()
 
   stratus.new(request, State(client_inbox: inbox))

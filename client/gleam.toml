@@ -17,7 +17,7 @@ target = "javascript"
 shared = {path = "../shared"}
 gleam_stdlib = ">= 0.44.0 and < 2.0.0"
 lustre = ">= 5.5.2 and < 6.0.0"
-rsvp = ">= 1.2.0 and < 2.0.0"
+rsvp = ">= 2.0.0 and < 3.0.0"
 envoy = ">= 1.1.0 and < 2.0.0"
 formal = ">= 3.0.0 and < 4.0.0"
 gleam_json = ">= 3.1.0 and < 4.0.0"
@@ -28,7 +28,7 @@ modem = ">= 2.1.2 and < 3.0.0"
 [dev-dependencies]
 gleeunit = ">= 1.0.0 and < 2.0.0"
 lustre_dev_tools = ">= 2.3.4 and < 3.0.0"
-birdie = ">= 1.5.4 and < 2.0.0"
+birdie = ">= 2.0.0 and < 3.0.0"
 
 [tools.lustre.dev]
 host = "localhost"

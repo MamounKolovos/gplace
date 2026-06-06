@@ -6,13 +6,13 @@ import shared/api_error.{type ApiError}
 pub type Error {
   ApiFailure(ApiError)
   InvalidApiResponse(String)
-  TransportFailure(rsvp.Error)
+  TransportFailure(rsvp.Error(String))
 }
 
 pub fn expect_json(
   decoder: decode.Decoder(a),
   handler: fn(Result(a, Error)) -> msg,
-) -> rsvp.Handler(msg) {
+) -> rsvp.Handler(String, msg) {
   use res <- rsvp.expect_json(decoder)
 
   let response = case res {
