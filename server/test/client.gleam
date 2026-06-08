@@ -1,10 +1,11 @@
+import collie
 import gleam/erlang/process.{type Pid, type Subject}
 import gleam/http/request.{type Request}
 import gleam/json
 import gleam/otp/actor
 import gleam/result
+import logging
 import shared/transport.{type ClientMessage, type ServerMessage}
-import stratus
 
 // asserting everywhere since this is meant to be used by tests
 // no real reason to let caller handle errors
@@ -15,7 +16,7 @@ import stratus
 pub opaque type Client {
   Client(
     self: Pid,
-    mailbox: Subject(stratus.InternalMessage(Message)),
+    mailbox: Subject(collie.WebsocketMessage(Message)),
     inbox: Subject(ServerMessage),
   )
 }
@@ -32,73 +33,71 @@ type State {
 pub fn init(request: Request(String)) -> Result(Client, actor.StartError) {
   let inbox = process.new_subject()
 
-  stratus.new(request, State(client_inbox: inbox))
-  |> stratus.on_message(handle_message)
-  |> stratus.on_close(handle_close)
-  |> stratus.start
+  collie.new(request, State(client_inbox: inbox))
+  |> collie.on_message(handle_message)
+  |> collie.on_close(handle_close)
+  |> collie.start
   |> result.map(fn(actor) {
     Client(self: actor.pid, mailbox: actor.data, inbox:)
   })
 }
 
-fn handle_close(_state: State, _reason: stratus.CloseReason) -> Nil {
+fn handle_close(_state: State, _reason: collie.CloseReason) -> Nil {
   Nil
 }
 
 fn handle_message(
+  conn: collie.Connection,
   state: State,
-  message: stratus.Message(Message),
-  conn: stratus.Connection,
-) -> stratus.Next(State, Message) {
+  message: collie.Message(Message),
+) -> collie.Next(State, Message) {
   case message {
-    stratus.Text(message) ->
+    collie.Text(message) ->
       case json.parse(message, transport.server_message_decoder()) {
         Ok(message) -> {
           process.send(state.client_inbox, message)
-          stratus.continue(state)
+          collie.continue(state)
         }
         Error(_) -> {
-          let assert Ok(_) =
-            stratus.close(conn, because: stratus.ProtocolError(<<>>))
-          stratus.stop_abnormal(
+          logging.log(
+            logging.Warning,
             "failed to parse server message into valid json",
           )
+          collie.continue(state)
         }
       }
-    stratus.Binary(_) -> {
-      let assert Ok(_) =
-        stratus.close(conn, because: stratus.UnexpectedDataType(<<>>))
-      stratus.stop_abnormal("expected string not bitarray")
+    collie.Binary(_) -> {
+      logging.log(logging.Error, "expected string not binary")
+      collie.send_close_frame(conn, collie.UnsupportedData(<<>>))
     }
-    stratus.User(message) ->
+    collie.User(message) ->
       case message {
         Send(message) -> {
           let assert Ok(_) = send_to_server(conn, message)
-          stratus.continue(state)
+          collie.continue(state)
         }
         Close -> {
-          let assert Ok(_) = stratus.close(conn, because: stratus.Normal(<<>>))
-          stratus.stop()
+          collie.send_close_frame(conn, collie.NormalClosure(<<>>))
         }
       }
   }
 }
 
 fn send_to_server(
-  conn: stratus.Connection,
+  conn: collie.Connection,
   message: ClientMessage,
-) -> Result(Nil, stratus.SocketReason) {
+) -> Result(Nil, collie.SocketReason) {
   message
   |> transport.encode_client_message
-  |> stratus.send_text_message(conn, _)
+  |> collie.send_text_frame(conn, _)
 }
 
 pub fn send(client: Client, message: ClientMessage) -> Nil {
-  process.send(client.mailbox, message |> Send |> stratus.to_user_message)
+  process.send(client.mailbox, Send(message) |> collie.to_user_message)
 }
 
 pub fn close(client: Client) -> Nil {
-  process.send(client.mailbox, stratus.to_user_message(Close))
+  process.send(client.mailbox, collie.to_user_message(Close))
 
   let _ = process.monitor(client.self)
   let reply_with = process.new_subject()
