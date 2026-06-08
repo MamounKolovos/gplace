@@ -1,9 +1,9 @@
-import client
 import fixture
 import gleam/erlang/process
 import gleam/time/duration
 import logging
 import server
+import server_dev/client
 import shared/transport
 
 pub fn simple_user_count_test() {

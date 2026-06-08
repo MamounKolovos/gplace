@@ -1,4 +1,3 @@
-import client.{type Client}
 import envoy
 import exception
 import gleam/erlang/process
@@ -22,6 +21,7 @@ import server/database
 import server/realtime
 import server/user.{type User}
 import server/web
+import server_dev/client.{type Client}
 import wisp
 import wisp/simulate
 import youid/uuid.{type Uuid}
